@@ -1,0 +1,90 @@
+name: Carter's Care | Daily Operations Autopilot
+
+on:
+  schedule:
+    # 07:00 Australia/Perth (UTC+08)
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: care-daily-autopilot
+  cancel-in-progress: false
+
+jobs:
+  checkpoints:
+    name: Sync launch and post-launch checkpoint issues
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '22'
+      - run: node scripts/launch-control.mjs checkpoints
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  quality:
+    name: Non-destructive regression checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VITE_AUTH_ENABLED: 'false'
+      DATABASE_URL: ''
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: node scripts/launch-control.mjs validate
+      - run: node --test scripts/launch-control.test.mjs
+      - run: npm run build
+
+  probe:
+    name: Check public landing and login availability
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '22'
+      - run: node scripts/launch-control.mjs probe
+        env:
+          CARTERSCARE_PUBLIC_URL: ${{ vars.CARTERSCARE_PUBLIC_URL }}
+
+  alert:
+    name: Open/reuse a single operational alert issue
+    needs: [checkpoints, quality, probe]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '22'
+      - run: node scripts/launch-control.mjs alerts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_RESULT: ${{ needs.checkpoints.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          LIVE_RESULT: ${{ needs.probe.result }}

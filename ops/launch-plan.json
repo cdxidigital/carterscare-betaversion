@@ -1,0 +1,173 @@
+{
+  "service": "Carters Care Group",
+  "repository": "cdxidigital/carterscare-betaversion",
+  "timezone": "Australia/Perth",
+  "baselineDate": "2026-10-30",
+  "releases": {
+    "publicDemoTarget": "2026-11-02",
+    "controlledPilotTarget": "2026-11-09",
+    "productionTarget": "2026-11-16"
+  },
+  "policy": {
+    "publicDemo": "Synthetic data only; never store real participant information in demo.",
+    "controlledPilot": "Require server-side auth, RBAC, encrypted durable database, backup and restore proof.",
+    "production": "Require approved go/no-go, tested exact build, monitoring and support owner.",
+    "highRiskChange": "Human approval mandatory for care records, authorizations, incident reporting, payments, migrations and production promotion."
+  },
+  "checkpoints": [
+    {
+      "id": "security-freeze",
+      "due": "2026-10-31",
+      "title": "P0 demo safety and data inventory",
+      "owner": "Delivery owner",
+      "gate": "No real client records in demo; inventory access, roles, data and secrets"
+    },
+    {
+      "id": "quality-baseline",
+      "due": "2026-11-01",
+      "title": "Release checks baseline",
+      "owner": "Release owner",
+      "gate": "Typecheck, lint, test, build, mobile/browser smoke and track any failures"
+    },
+    {
+      "id": "demo-release",
+      "due": "2026-11-02",
+      "title": "Fictional-data demo gate",
+      "owner": "Service owner",
+      "gate": "Approve demo-only content and privacy warning; no real client signup"
+    },
+    {
+      "id": "support-intake",
+      "due": "2026-11-03",
+      "title": "Support and feedback channel",
+      "owner": "Operations",
+      "gate": "Publish safe support channel and incident severity rules"
+    },
+    {
+      "id": "auth-boundary",
+      "due": "2026-11-05",
+      "title": "Secure identity and authorization",
+      "owner": "Security",
+      "gate": "No demo credentials in real flows; prove server-side role and client isolation"
+    },
+    {
+      "id": "backend-persistence",
+      "due": "2026-11-06",
+      "title": "Durable database and audit trail",
+      "owner": "Engineering",
+      "gate": "Server-authorized writes, encryption, tenant isolation, audit and migration safeguards"
+    },
+    {
+      "id": "backup-drill",
+      "due": "2026-11-07",
+      "title": "Restore, retention and breach drills",
+      "owner": "Operations",
+      "gate": "Encrypted backups, tested restore and privacy incident drill"
+    },
+    {
+      "id": "pilot-go-no-go",
+      "due": "2026-11-08",
+      "title": "Pilot go/no-go",
+      "owner": "Service owner",
+      "gate": "No P0/P1 bugs; sign privacy, security, monitoring and restore evidence"
+    },
+    {
+      "id": "pilot-release",
+      "due": "2026-11-09",
+      "title": "Controlled pilot target",
+      "owner": "Service owner",
+      "gate": "Limited consented pilot only after successful gate"
+    },
+    {
+      "id": "pilot-day1",
+      "due": "2026-11-10",
+      "title": "Pilot D+1 audit",
+      "owner": "Operations",
+      "gate": "User onboarding, login, data-write, support and alert review"
+    },
+    {
+      "id": "pilot-day3",
+      "due": "2026-11-12",
+      "title": "Pilot D+3 audit",
+      "owner": "Operations",
+      "gate": "Access tests, errors, tickets, backups and care workflow reliability"
+    },
+    {
+      "id": "production-go-no-go",
+      "due": "2026-11-15",
+      "title": "Production go/no-go",
+      "owner": "Service owner",
+      "gate": "Approve after all safety tests, rollback and support readiness"
+    },
+    {
+      "id": "production-release",
+      "due": "2026-11-16",
+      "title": "Production release target",
+      "owner": "Service owner",
+      "gate": "Promote only the approved verified build; no release on calendar alone"
+    },
+    {
+      "id": "production-day1",
+      "due": "2026-11-17",
+      "title": "Production D+1",
+      "owner": "Operations",
+      "gate": "Review incidents, availability, login success, data integrity and support"
+    },
+    {
+      "id": "production-day3",
+      "due": "2026-11-19",
+      "title": "Production D+3",
+      "owner": "Operations",
+      "gate": "Review latency, error spikes, roster workflows and restoration status"
+    },
+    {
+      "id": "production-day7",
+      "due": "2026-11-23",
+      "title": "Production D+7",
+      "owner": "Product owner",
+      "gate": "Fix top onboarding issues via tested small PRs"
+    },
+    {
+      "id": "production-day14",
+      "due": "2026-11-30",
+      "title": "Production D+14",
+      "owner": "Product owner",
+      "gate": "Defect trends, training and access recertification"
+    },
+    {
+      "id": "production-day30",
+      "due": "2026-12-16",
+      "title": "Production D+30",
+      "owner": "Service owner",
+      "gate": "Review SLO, SLA, cost, backup drill and priorities"
+    },
+    {
+      "id": "production-day60",
+      "due": "2027-01-15",
+      "title": "Production D+60",
+      "owner": "Service owner",
+      "gate": "Review adoption, client sentiment, regulation and automation"
+    },
+    {
+      "id": "production-day90",
+      "due": "2027-02-14",
+      "title": "Production D+90",
+      "owner": "Service owner",
+      "gate": "Incident exercise, handover, audit and quarterly roadmap"
+    },
+    {
+      "id": "production-day180",
+      "due": "2027-05-15",
+      "title": "Production D+180",
+      "owner": "Service owner",
+      "gate": "Independent security, retention and UX assurance"
+    },
+    {
+      "id": "production-year1",
+      "due": "2027-11-16",
+      "title": "Production annual review",
+      "owner": "Service owner",
+      "gate": "Annual legal, access, privacy, restore and business continuity review"
+    }
+  ]
+}
