@@ -1,0 +1,1 @@
+import{k as e}from"./session-BCIKEhWl.js";import{v as t}from"./screens-BO6AZHM4.js";import{s as n}from"./index-R9adpIB_.js";var r=e(),i=function(){let{noteId:e}=n.useParams();return(0,r.jsx)(t,{noteId:e})};export{i as component};

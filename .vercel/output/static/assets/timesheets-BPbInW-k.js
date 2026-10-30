@@ -1,0 +1,1 @@
+import{N as e}from"./screens-BO6AZHM4.js";var t=e;export{t as component};

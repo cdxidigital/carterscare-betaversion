@@ -12,10 +12,12 @@ export type Staff = {
   title: string;
   role: Role | "team_leader";
   status: "active" | "leave";
-  wwcc: "ok" | "expiring" | "expired";
-  firstAid: "ok" | "expiring" | "expired";
+  wwcc: "ok" | "expiring" | "expired" | "missing";
+  firstAid: "ok" | "expiring" | "expired" | "missing";
   wwccExpiry: string;
   firstAidExpiry: string;
+  ndisScreening: "ok" | "expiring" | "expired" | "missing";
+  ndisScreeningExpiry: string;
   employment: string;
 };
 
@@ -32,6 +34,8 @@ export type Client = {
   coordinator: string;
   goals: string;
   staffIds: string[];
+  privacyConsent?: boolean;
+  consentAt?: string;
 };
 
 export type Note = {
@@ -51,6 +55,7 @@ export type Incident = {
   staffId: string;
   severity: "low" | "moderate" | "high";
   status: "open" | "investigating" | "closed";
+  reportable: boolean;
   when: string;
   summary: string;
   followUp: string;
@@ -111,7 +116,7 @@ export type OnboardingTask = {
   status: "pending" | "done";
 };
 
-export type RequestKind = "schedule" | "service" | "feedback" | "other";
+export type RequestKind = "schedule" | "service" | "feedback" | "privacy" | "correction" | "other";
 
 export type RequestItem = {
   id: string;
@@ -120,6 +125,7 @@ export type RequestItem = {
   status: "pending" | "in_progress" | "resolved";
   notes: string;
   type: RequestKind;
+  reply?: string;
 };
 
 export type Checkin = {

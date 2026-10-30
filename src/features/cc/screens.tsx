@@ -4,11 +4,14 @@ import { AlertTriangle, CalendarDays, Clock, FileText, Heart, ShieldCheck, UserC
 import { useLookups } from "@/lib/cc/lookups";
 import { canAccess, homeFor } from "@/lib/cc/nav";
 import { useSession } from "@/lib/cc/session";
+import { CLAIM_NOTE, money, rosterHold, rosterWarn } from "@/lib/cc/compliance";
 import { weekDays, seed } from "@/lib/cc/seed";
 import { displayClock, hoursBetween, perthDate, perthGreeting, perthNow, perthShortDate, perthShortDateYear } from "@/lib/utils";
 import { Btn, Card, Crumb, Empty, Field, Input, Modal, PageHead, PersonLink, Pill, Select, Textarea } from "@/components/cc/ui";
+import { PrivacyNotice } from "@/features/cc/privacy-notice";
+import { REQUEST_LABEL } from "@/lib/cc/privacy";
 import { Guard } from "@/components/cc/shell";
-import type { Role } from "@/lib/cc/types";
+import type { RequestKind, Role } from "@/lib/cc/types";
 
 function useDeskSearch() {
   return useSearch({ strict: false }) as { add?: string; client?: string };
@@ -35,8 +38,9 @@ export function DashboardScreen() {
   const isAdmin = canAccess(role, "admin");
   const onShift = db.checkins.filter((c) => !c.outAt);
   const openIncidents = db.incidents.filter((i) => i.status !== "closed");
+  const reportable = openIncidents.filter((i) => i.reportable).length;
   const alerts =
-    openIncidents.length + db.staff.filter((s) => s.firstAid !== "ok" || s.wwcc !== "ok").length;
+    openIncidents.length + db.staff.filter((s) => s.firstAid !== "ok" || s.wwcc !== "ok" || s.ndisScreening !== "ok").length;
   const first = session?.name.split(" ")[0] ?? "there";
   const notesToday = db.notes.length;
   const activeClients = db.clients.filter((c) => c.status === "active");
@@ -92,7 +96,7 @@ export function DashboardScreen() {
           <span>
             <span className="block text-2xl font-bold leading-tight">{alerts}</span>
             <span className="block text-sm font-semibold text-fg/70">Alerts</span>
-            <span className="block text-xs text-muted">{alerts > 0 ? "Requires attention" : "All clear"}</span>
+            <span className="block text-xs text-muted">{alerts > 0 ? (reportable ? `${reportable} reportable · 24h notice` : "Requires attention") : "All clear"}</span>
           </span>
         </button>
       </div>
@@ -134,30 +138,35 @@ export function DashboardScreen() {
               </span>
               <h2 className="font-semibold">Upcoming Shifts</h2>
             </div>
-            <Link to={isMgr ? "/timesheets" : "/my-timesheets"} className="text-sm text-primary">
-              Timesheets
+            <Link to={isMgr ? "/roster" : "/my-roster"} className="text-sm text-primary">
+              Roster
             </Link>
           </div>
           <div className="space-y-2">
-            {db.timesheets.map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded-md p-2 hover:bg-bg">
-                <span>
-                  <Link to={`/staff/${t.staffId}` as never} className="font-semibold hover:underline">
-                    {db.staffName(t.staffId)}
-                  </Link>
-                  {" · "}
-                  <Link to={`/clients/${t.clientId}` as never} className="hover:underline">
-                    {db.clientName(t.clientId)}
-                  </Link>
-                  <span className="block text-xs text-muted">
-                    {t.date} {t.start}–{t.end}
+            {db.shifts
+              .filter((s) => s.status === "scheduled" || s.status === "in_progress")
+              .sort((a, b) => weekDays.indexOf(a.day) - weekDays.indexOf(b.day))
+              .slice(0, 6)
+              .map((s) => (
+                <div key={s.id} className="flex items-center justify-between rounded-md p-2 hover:bg-bg">
+                  <span>
+                    <Link to={`/staff/${s.staffId}` as never} className="font-semibold hover:underline">
+                      {db.staffName(s.staffId)}
+                    </Link>
+                    {" · "}
+                    <Link to={`/clients/${s.clientId}` as never} className="hover:underline">
+                      {db.clientName(s.clientId)}
+                    </Link>
+                    <span className="block text-xs text-muted">
+                      {s.day} {s.window}
+                    </span>
                   </span>
-                </span>
-                <Link to={`/timesheets/${t.id}` as never}>
-                  <Pill status={t.status}>{t.status}</Pill>
-                </Link>
-              </div>
-            ))}
+                  <Pill status={s.status}>{s.status}</Pill>
+                </div>
+              ))}
+            {db.shifts.every((s) => s.status === "complete" || s.status === "off") ? (
+              <p className="text-sm text-muted">No shifts left this week.</p>
+            ) : null}
           </div>
         </Card>
         <Card className="lg:col-span-2">
@@ -206,14 +215,16 @@ export function DashboardScreen() {
 }
 
 export function ClientsScreen() {
+  const { session } = useSession();
   const db = useLookups();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const isMgr = canAccess(session?.role, "manager");
   const rows = db.clients.filter((c) => (c.name + c.suburb).toLowerCase().includes(q.toLowerCase()));
   return (
     <>
-      <PageHead title="Clients" sub="Active supports across metro Perth" actions={<Btn onClick={() => setOpen(true)}>Add client</Btn>} />
+      <PageHead title="Clients" sub={isMgr ? "Active supports across metro Perth" : "Participants assigned to you"} actions={isMgr ? <Btn onClick={() => setOpen(true)}>Add client</Btn> : undefined} />
       <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="mb-3 max-w-xs" />
       <Card className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
@@ -253,6 +264,7 @@ export function ClientsScreen() {
                 plan: String(fd.get("plan")),
                 hours: Number(fd.get("hours") || 12),
                 risk: (fd.get("risk") as "low") || "low",
+                privacyConsent: fd.get("consent") === "on",
               });
               setOpen(false);
               void nav({ to: "/clients/$clientId", params: { clientId: id } });
@@ -270,6 +282,11 @@ export function ClientsScreen() {
                 <option>high</option>
               </Select>
             </Field>
+            <PrivacyNotice variant="collect" />
+            <label className="mb-3 flex items-start gap-2 text-sm">
+              <input type="checkbox" name="consent" className="mt-0.5 size-4" required />
+              <span>The participant or their guardian consents to collecting this sensitive information for supports, safety, and NDIS claiming.</span>
+            </label>
             <Btn type="submit">Save and open</Btn>
           </form>
         </Modal>
@@ -287,7 +304,7 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
   const notes = db.notes.filter((n) => n.clientId === c.id);
   const incidents = db.incidents.filter((i) => i.clientId === c.id);
   const invoices = db.invoices.filter((i) => i.clientId === c.id);
-  const plan = db.carePlans.find((p) => p.clientId === c.id);
+  const plans = db.carePlans.filter((p) => p.clientId === c.id);
   const shifts = db.shifts.filter((s) => s.clientId === c.id);
   const reqs = db.requests.filter((r) => r.clientId === c.id);
   const coord = db.staff.find((s) => s.name === c.coordinator);
@@ -326,22 +343,28 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
         )}
         <span className="text-sm text-muted">{c.hours} hrs / week</span>
       </div>
+      <p className="mb-4 text-xs leading-relaxed text-muted">
+        The NDIS number is a government identifier, used only for the plan and claims. It is not the file number and it is not used for marketing.
+        {c.privacyConsent ? ` Privacy consent is on file${c.consentAt ? ` (${c.consentAt})` : ""}.` : " Privacy consent is not on file yet — intake stays open until it is recorded."}
+      </p>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <h2 className="mb-2 font-semibold">Care plan</h2>
-          {plan ? (
-            isMgr ? (
-              <Link to="/clients/care-plans" search={{ client: c.id } as never} className="block rounded-md p-2 hover:bg-bg">
-                <p className="font-semibold">{plan.name}</p>
-                <p className="text-sm text-muted">{plan.goals.join(" · ")}</p>
-                <Pill status={plan.status}>{plan.status}</Pill>
-              </Link>
-            ) : (
-              <div className="rounded-md p-2">
-                <p className="font-semibold">{plan.name}</p>
-                <p className="text-sm text-muted">{plan.goals.join(" · ")}</p>
-                <Pill status={plan.status}>{plan.status}</Pill>
-              </div>
+          {plans.length > 0 ? (
+            plans.map((plan) =>
+              isMgr ? (
+                <Link key={plan.id} to="/clients/care-plans" search={{ client: c.id } as never} className="mb-2 block rounded-md p-2 hover:bg-bg last:mb-0">
+                  <p className="font-semibold">{plan.name}</p>
+                  <p className="text-sm text-muted">{plan.goals.join(" · ")}</p>
+                  <Pill status={plan.status}>{plan.status}</Pill>
+                </Link>
+              ) : (
+                <div key={plan.id} className="mb-2 rounded-md p-2 last:mb-0">
+                  <p className="font-semibold">{plan.name}</p>
+                  <p className="text-sm text-muted">{plan.goals.join(" · ")}</p>
+                  <Pill status={plan.status}>{plan.status}</Pill>
+                </div>
+              ),
             )
           ) : (
             <Empty title="No care plan" action={isMgr ? <Btn to="/clients/care-plans" search={{ add: "1", client: c.id }}>Open care plans</Btn> : undefined} />
@@ -386,7 +409,10 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
           {incidents.length === 0 ? <p className="text-sm text-muted">None recorded.</p> : incidents.map((i) => (
             <Link key={i.id} to={`/incidents/${i.id}` as never} className="flex items-center justify-between rounded-md p-2 hover:bg-bg">
               <span className="text-sm">{i.summary}</span>
-              <Pill status={i.status}>{i.status}</Pill>
+              <span className="flex gap-1">
+                {i.reportable && i.status !== "closed" ? <Pill status="high">24h</Pill> : null}
+                <Pill status={i.status}>{i.status}</Pill>
+              </span>
             </Link>
           ))}
         </Card>
@@ -456,7 +482,7 @@ export function ClientDetailScreen({ clientId }: { clientId: string }) {
                 <p className="text-sm text-muted">Everyone on the team is already assigned.</p>
               ) : (
                 <Select name="staffId">
-                  {unassigned.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.title}</option>)}
+                  {unassigned.map((s) => <option key={s.id} value={s.id}>{s.name} · {rosterHold(s) ?? s.title}</option>)}
                 </Select>
               )}
             </Field>
@@ -554,12 +580,12 @@ export function StaffScreen() {
   const [open, setOpen] = useState(false);
   return (
     <Guard min="manager">
-      <PageHead title="Staff" sub="Workforce, WWCC and first aid" actions={<Btn onClick={() => setOpen(true)}>Add staff</Btn>} />
+      <PageHead title="Staff" sub="Workforce, screening and first aid" actions={<Btn onClick={() => setOpen(true)}>Add staff</Btn>} />
       <Card className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="text-left text-[11px] tracking-wide text-muted uppercase">
-              {["Name", "Title", "WWCC", "First aid", "Status"].map((h) => <th key={h} className="pb-2">{h}</th>)}
+              {["Name", "Title", "NDIS", "WWCC", "First aid", "Status"].map((h) => <th key={h} className="pb-2">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -567,6 +593,7 @@ export function StaffScreen() {
               <tr key={s.id} className="border-t border-border">
                 <td className="py-3"><Link to={`/staff/${s.id}` as never} className="font-semibold hover:underline">{s.name}</Link></td>
                 <td>{s.title}</td>
+                <td><Pill status={s.ndisScreening}>{s.ndisScreening}</Pill></td>
                 <td><Pill status={s.wwcc}>{s.wwcc}</Pill></td>
                 <td><Pill status={s.firstAid}>{s.firstAid}</Pill></td>
                 <td><Pill status={s.status}>{s.status}</Pill></td>
@@ -613,6 +640,8 @@ export function StaffDetailScreen({ staffId }: { staffId: string }) {
   const sheets = db.timesheets.filter((t) => t.staffId === s.id);
   const training = db.training.filter((t) => t.staffId === s.id);
   const shifts = db.shifts.filter((x) => x.staffId === s.id);
+  const hold = rosterHold(s);
+  const warn = rosterWarn(s);
   return (
     <>
       <Crumb items={[{ to: isMgr ? "/staff" : homeFor(session?.role), label: isMgr ? "Staff" : "Home" }, { label: s.name }]} />
@@ -626,11 +655,23 @@ export function StaffDetailScreen({ staffId }: { staffId: string }) {
           </>
         }
       />
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         <Pill status={s.status}>{s.status}</Pill>
+        <Pill status={s.ndisScreening}>NDIS screening {s.ndisScreening}</Pill>
         <Pill status={s.wwcc}>WWCC {s.wwcc}</Pill>
         <Pill status={s.firstAid}>First aid {s.firstAid}</Pill>
       </div>
+      <p className="mb-3 text-xs text-muted">NDIS screening {s.ndisScreeningExpiry} · WWCC {s.wwccExpiry} · First aid {s.firstAidExpiry}</p>
+      {hold ? <p className="mb-3 text-sm text-bad">{hold}. Roster and check-in stay blocked until this is cleared.</p> : null}
+      {!hold && warn ? <p className="mb-3 text-sm text-warn">{warn}. Still clear to work.</p> : null}
+      {isMgr && (s.ndisScreening !== "ok" || s.wwcc !== "ok" || s.firstAid !== "ok" || s.status === "leave") ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {s.status === "leave" ? <Btn onClick={() => db.setStaffStatus(s.id, "active")}>Return to work</Btn> : null}
+          {s.ndisScreening !== "ok" ? <Btn variant="ghost" onClick={() => db.markClearance(s.id, "ndis")}>Mark NDIS screening current</Btn> : null}
+          {s.wwcc !== "ok" ? <Btn variant="ghost" onClick={() => db.markClearance(s.id, "wwcc")}>Mark WWCC current</Btn> : null}
+          {s.firstAid !== "ok" ? <Btn variant="ghost" onClick={() => db.markClearance(s.id, "firstAid")}>Mark first aid current</Btn> : null}
+        </div>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <h2 className="mb-2 font-semibold">Assigned clients</h2>
@@ -701,29 +742,43 @@ export function SimpleLinkList({
 export function RosterScreen() {
   const db = useLookups();
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
   const workers = db.staff.filter((s) => s.role === "support_worker" || s.role === "team_leader");
+  const [staffId, setStaffId] = useState(workers[0]?.id ?? "");
+  const picked = workers.find((s) => s.id === staffId);
+  const hold = picked ? rosterHold(picked) : null;
+  const warn = picked && !hold ? rosterWarn(picked) : null;
   const weekLabel = `${weekDays[0]} – ${weekDays[weekDays.length - 1]}`;
   return (
     <Guard min="manager">
-      <PageHead title="Roster" sub={`Week of ${weekLabel} · Perth`} actions={<><Btn onClick={() => setOpen(true)}>Add shift</Btn><Btn to="/check-in" variant="ghost">Live check-in</Btn></>} />
+      <PageHead title="Roster" sub={`Week of ${weekLabel} · Perth`} actions={<><Btn onClick={() => { setError(""); setOpen(true); }}>Add shift</Btn><Btn to="/check-in" variant="ghost">Live check-in</Btn></>} />
       <Card className="overflow-x-auto">
-        <div className="grid min-w-[720px] gap-1" style={{ gridTemplateColumns: `110px repeat(${weekDays.length}, minmax(72px, 1fr))` }}>
+        <div className="grid min-w-[880px] gap-1" style={{ gridTemplateColumns: `110px repeat(${weekDays.length}, minmax(72px, 1fr))` }}>
           <div />
-          {weekDays.map((d) => (
-            <div key={d} className="text-[11px] font-semibold text-muted">{d}</div>
-          ))}
+          {weekDays.map((d) => {
+            const [weekday, ...rest] = d.split(" ");
+            return (
+              <div key={d} className="text-[11px] font-semibold leading-tight text-muted">
+                <span className="block">{weekday}</span>
+                <span className="block font-medium">{rest.join(" ")}</span>
+              </div>
+            );
+          })}
           {workers.map((s) => (
             <Fragment key={s.id}>
-              <Link to={`/staff/${s.id}` as never} className="pt-2 text-xs font-semibold hover:underline">{s.name.split(" ")[0]}</Link>
+              <Link to={`/staff/${s.id}` as never} className="pt-2 text-xs font-semibold hover:underline">
+                {s.name.split(" ")[0]}
+                {rosterHold(s) ? <span className="block text-[10px] font-medium text-bad">Not clear</span> : null}
+              </Link>
               {weekDays.map((d) => {
                 const cells = db.shifts.filter((x) => x.staffId === s.id && x.day === d);
                 return (
                   <div key={s.id + d} className={`min-h-16 rounded-md border border-border p-1.5 text-[11px] ${cells.length ? "bg-bg" : ""}`}>
                     {cells.length ? (
                       cells.map((cell) => (
-                        <Link key={cell.id} to={`/clients/${cell.clientId}` as never} className="mb-1 block hover:underline last:mb-0">
-                          {db.clientName(cell.clientId).split(" ")[0]} {cell.window}
-                          <Pill status={cell.status}>{cell.status}</Pill>
+                        <Link key={cell.id} to={`/clients/${cell.clientId}` as never} className="mb-1 block rounded-sm bg-surface px-1 py-0.5 leading-tight last:mb-0 hover:underline">
+                          <span className="block font-semibold">{db.clientName(cell.clientId).split(" ")[0]}</span>
+                          <span className="block text-subtle">{cell.window}</span>
                         </Link>
                       ))
                     ) : (
@@ -742,20 +797,28 @@ export function RosterScreen() {
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              db.addShift({
+              const result = db.addShift({
                 staffId: String(fd.get("staffId")),
                 clientId: String(fd.get("clientId")),
                 day: String(fd.get("day")),
                 window: String(fd.get("window") || "09–15"),
               });
+              if ("error" in result) {
+                setError(result.error);
+                return;
+              }
+              setError("");
               setOpen(false);
             }}
           >
             <Field label="Worker">
-              <Select name="staffId" defaultValue={workers[0]?.id}>
-                {workers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <Select name="staffId" value={staffId} onChange={(e) => { setStaffId(e.target.value); setError(""); }}>
+                {workers.map((s) => <option key={s.id} value={s.id}>{s.name}{rosterHold(s) ? " · not clear" : ""}</option>)}
               </Select>
             </Field>
+            {hold ? <p className="mb-3 text-sm text-bad">{hold}. They cannot be rostered until this is cleared.</p> : null}
+            {warn ? <p className="mb-3 text-sm text-warn">{warn}. Still clear to roster.</p> : null}
+            {error ? <p className="mb-3 text-sm text-bad">{error}</p> : null}
             <Field label="Client">
               <Select name="clientId" defaultValue={db.clients[0]?.id}>
                 {db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -767,7 +830,7 @@ export function RosterScreen() {
               </Select>
             </Field>
             <Field label="Window"><Input name="window" defaultValue="09–15" /></Field>
-            <Btn type="submit">Save to roster</Btn>
+            <Btn type="submit" disabled={!!hold}>Save to roster</Btn>
           </form>
         </Modal>
       )}
@@ -783,6 +846,11 @@ export function CheckInScreen() {
   const open = db.checkins.filter((c) => !c.outAt);
   const [staffId, setStaffId] = useState(mine || db.staff[0]?.id || "s1");
   const [clientId, setClientId] = useState(db.clients[0]?.id ?? "c1");
+  const [note, setNote] = useState("");
+  const picked = db.staff.find((s) => s.id === staffId);
+  const hold = picked ? rosterHold(picked) : null;
+  const warn = picked && !hold ? rosterWarn(picked) : null;
+  if (session?.role === "support_worker") return <WorkerCheckInScreen />;
   return (
     <>
       <PageHead title="Live check-in" sub="Who is on the floor right now" />
@@ -801,7 +869,10 @@ export function CheckInScreen() {
               </Select>
             </Field>
           </div>
-          <Btn onClick={() => db.checkIn(staffId, clientId)}>Check in now</Btn>
+          {hold ? <p className="mb-2 text-sm text-bad">{hold}. Check-in stays blocked until this is cleared.</p> : null}
+          {warn ? <p className="mb-2 text-sm text-warn">{warn}. Still clear to work.</p> : null}
+          {note ? <p className="mb-2 text-sm text-muted">{note}</p> : null}
+          <Btn disabled={!!hold} onClick={() => setNote(db.checkIn(staffId, clientId) ?? `Checked in ${db.staffName(staffId)}.`)}>Check in now</Btn>
         </Card>
       ) : null}
       <div className="grid gap-3">
@@ -815,10 +886,7 @@ export function CheckInScreen() {
           </Card>
         ))}
         {open.length === 0 ? (
-          <Empty
-            title="Nobody is checked in"
-            action={<Btn to={session?.role === "support_worker" ? "/worker/check-in" : "/roster"}>Go to {session?.role === "support_worker" ? "worker check-in" : "roster"}</Btn>}
-          />
+          <Empty title="Nobody is checked in" action={<Btn to="/roster">Go to roster</Btn>} />
         ) : null}
       </div>
     </>
@@ -832,6 +900,7 @@ export function TimesheetsScreen() {
   const search = useDeskSearch();
   const [open, setOpen] = useState(search.add === "1");
   const canApprove = canAccess(session?.role, "manager");
+  const worker = session?.role === "support_worker";
   const rows =
     session?.role === "support_worker" && session.staffId
       ? db.timesheets.filter((t) => t.staffId === session.staffId)
@@ -865,7 +934,7 @@ export function TimesheetsScreen() {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const id = db.addTimesheet({
-                staffId: String(fd.get("staffId") || session?.staffId || db.staff[0].id),
+                staffId: String(fd.get("staffId") || session?.staffId || db.staff[0]?.id),
                 clientId: String(fd.get("clientId")),
                 date: String(fd.get("date")),
                 start: String(fd.get("start")),
@@ -878,12 +947,19 @@ export function TimesheetsScreen() {
             }}
           >
             <Field label="Worker">
-              <Select name="staffId" defaultValue={session?.staffId ?? db.staff[0].id}>
-                {db.staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
+              {worker ? (
+                <>
+                  <input type="hidden" name="staffId" value={session?.staffId ?? ""} />
+                  <p className="text-sm font-semibold">{session?.name}</p>
+                </>
+              ) : (
+                <Select name="staffId" defaultValue={session?.staffId ?? db.staff[0]?.id}>
+                  {db.staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </Select>
+              )}
             </Field>
             <Field label="Client">
-              <Select name="clientId" defaultValue={search.client ?? db.clients[0].id}>
+              <Select name="clientId" defaultValue={search.client ?? db.clients[0]?.id}>
                 {db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
@@ -906,7 +982,7 @@ export function TimesheetDetailScreen({ timesheetId }: { timesheetId: string }) 
   if (session?.role === "support_worker" && session.staffId && t.staffId !== session.staffId) {
     return <Missing what="timesheet" back="/my-timesheets" />;
   }
-  const related = db.invoices.filter((i) => i.timesheetIds.includes(t.id) || i.clientId === t.clientId);
+  const related = db.invoices.filter((i) => i.timesheetIds.includes(t.id));
   const canApprove = canAccess(session?.role, "manager");
   const isAdmin = canAccess(session?.role, "admin");
   return (
@@ -922,10 +998,10 @@ export function TimesheetDetailScreen({ timesheetId }: { timesheetId: string }) 
           {isAdmin ? <Btn to="/invoices" variant="ghost">Invoices</Btn> : null}
         </div>
       </Card>
-      {isAdmin && related.length > 0 ? (
+      {isAdmin ? (
         <Card className="mt-4">
-          <h2 className="mb-2 font-semibold">Related invoices</h2>
-          {related.map((i) => (
+          <h2 className="mb-2 font-semibold">Claimed on</h2>
+          {related.length === 0 ? <p className="text-sm text-muted">Not on a claim yet. Approve the hours, then pull them onto an invoice.</p> : related.map((i) => (
             <Link key={i.id} to={`/invoices/${i.id}` as never} className="flex justify-between py-2 text-sm">
               <span>{i.number} · {i.period}</span>
               <Pill status={i.status}>{i.status}</Pill>
@@ -956,7 +1032,7 @@ export function NotesScreen() {
                 <span className="text-xs text-muted">{n.date} · {n.shift}</span>
               </div>
               <p className="mt-2 text-sm">{n.body}</p>
-              <p className="mt-2 text-xs text-muted">Logged by {db.staffName(n.staffId)}</p>
+              <p className="mt-2 text-xs text-muted">Logged by {db.staffName(n.staffId)} · {n.visibleToClient ? "Shared with portal" : "Staff only"}</p>
             </Card>
           </Link>
         ))}
@@ -970,7 +1046,7 @@ export function NotesScreen() {
               const fd = new FormData(e.currentTarget);
               const id = db.addNote({
                 clientId: String(fd.get("clientId")),
-                staffId: session?.staffId || db.staff[0].id,
+                staffId: session?.staffId || db.staff[0]?.id || "",
                 date: perthShortDateYear(),
                 shift: String(fd.get("shift") || "today"),
                 body: String(fd.get("body")),
@@ -982,13 +1058,13 @@ export function NotesScreen() {
             }}
           >
             <Field label="Client">
-              <Select name="clientId" defaultValue={search.client ?? db.clients[0].id}>{db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
+              <Select name="clientId" defaultValue={search.client ?? db.clients[0]?.id}>{db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
             </Field>
             <Field label="Shift window"><Input name="shift" defaultValue="07:00–15:00" /></Field>
             <Field label="Note"><Textarea name="body" rows={4} required /></Field>
-            <label className="mb-3 flex items-center gap-2 text-sm">
-              <input type="checkbox" name="share" defaultChecked className="size-4" />
-              Share with the client portal
+            <label className="mb-3 flex items-start gap-2 text-sm">
+              <input type="checkbox" name="share" className="mt-0.5 size-4" />
+              <span>Share with the participant’s portal. Leave off for staff-only observations.</span>
             </label>
             <Btn type="submit">Save and open</Btn>
           </form>
@@ -1008,6 +1084,7 @@ export function NoteDetailScreen({ noteId }: { noteId: string }) {
       <PageHead title={db.clientName(n.clientId)} sub={`${n.date} · ${n.shift} · ${db.staffName(n.staffId)}`} />
       <Card>
         <p>{n.body}</p>
+        <p className="mt-3 text-xs text-muted">{n.visibleToClient ? "Shared with the participant’s portal." : "Staff only — not shown in the portal."}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Btn to={`/clients/${n.clientId}`}>Client file</Btn>
           <Btn to={`/staff/${n.staffId}`} variant="ghost">Worker</Btn>
@@ -1027,7 +1104,7 @@ export function IncidentsScreen() {
   const rows = search.client ? db.incidents.filter((i) => i.clientId === search.client) : db.incidents;
   return (
     <>
-      <PageHead title="Incidents" sub="Reportable events and follow-up" actions={<Btn onClick={() => setOpen(true)}>Report</Btn>} />
+      <PageHead title="Incidents" sub="Follow-up, including 24-hour NDIS Commission notices" actions={<Btn onClick={() => setOpen(true)}>Report</Btn>} />
       <div className="grid gap-3">
         {rows.map((i) => (
           <Link key={i.id} to={`/incidents/${i.id}` as never}>
@@ -1037,7 +1114,10 @@ export function IncidentsScreen() {
                 <p className="text-sm">{i.summary}</p>
                 <p className="text-xs text-muted">{i.when} · {db.staffName(i.staffId)}</p>
               </div>
-              <Pill status={i.status}>{i.status}</Pill>
+              <span className="flex flex-col items-end gap-1">
+                {i.reportable && i.status !== "closed" ? <Pill status="high">24h notice</Pill> : null}
+                <Pill status={i.status}>{i.status}</Pill>
+              </span>
             </Card>
           </Link>
         ))}
@@ -1051,24 +1131,31 @@ export function IncidentsScreen() {
               const fd = new FormData(e.currentTarget);
               const id = db.addIncident({
                 clientId: String(fd.get("clientId")),
-                staffId: session?.staffId || db.staff[0].id,
-                severity: (fd.get("severity") as "low") || "low",
+                staffId: session?.staffId || db.staff[0]?.id || "",
+                severity: (String(fd.get("severity")) as "low" | "moderate" | "high") || "low",
                 status: "open",
+                reportable: fd.get("reportable") === "on",
                 when: perthNow(),
                 summary: String(fd.get("summary")),
-                followUp: "Awaiting manager review.",
+                followUp: fd.get("reportable") === "on"
+                  ? "Notify the NDIS Commission within 24 hours. This demo records the flag and does not lodge the notice."
+                  : "Awaiting manager review.",
               });
               setOpen(false);
               void nav({ to: "/incidents/$incidentId", params: { incidentId: id } });
             }}
           >
             <Field label="Client">
-              <Select name="clientId" defaultValue={search.client ?? db.clients[0].id}>{db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
+              <Select name="clientId" defaultValue={search.client ?? db.clients[0]?.id}>{db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
             </Field>
             <Field label="Severity">
               <Select name="severity"><option>low</option><option>moderate</option><option>high</option></Select>
             </Field>
             <Field label="Summary"><Textarea name="summary" rows={3} required /></Field>
+            <label className="mb-3 flex items-start gap-2 text-sm">
+              <input type="checkbox" name="reportable" className="mt-0.5 size-4" />
+              <span>Reportable to the NDIS Commission within 24 hours — death, serious injury, abuse or neglect, unlawful contact, sexual misconduct, or an unauthorised restrictive practice.</span>
+            </label>
             <Btn type="submit">Save and open</Btn>
           </form>
         </Modal>
@@ -1086,11 +1173,33 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
   return (
     <>
       <Crumb items={[{ to: "/incidents", label: "Incidents" }, { label: db.clientName(i.clientId) }]} />
-      <PageHead title={db.clientName(i.clientId)} sub={`${i.when} · ${i.severity}`} />
+      <PageHead title={db.clientName(i.clientId)} sub={`${i.when} · ${i.severity}${i.reportable ? " · reportable" : ""}`} />
       <Card>
-        <Pill status={i.status}>{i.status}</Pill>
+        <div className="flex flex-wrap gap-2">
+          <Pill status={i.status}>{i.status}</Pill>
+          {i.reportable ? <Pill status="high">24h notice</Pill> : null}
+        </div>
         <p className="mt-3">{i.summary}</p>
         <p className="mt-2 text-sm text-muted">{i.followUp}</p>
+        {canClose ? (
+          <form
+            className="mt-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              db.setIncidentFollowUp(i.id, String(new FormData(e.currentTarget).get("followUp") || ""));
+            }}
+          >
+            <Field label="Update follow-up">
+              <Textarea name="followUp" defaultValue={i.followUp} rows={2} />
+            </Field>
+            <Btn type="submit">Save follow-up</Btn>
+          </form>
+        ) : null}
+        <p className="mt-3 text-xs leading-relaxed text-muted">
+          {i.reportable
+            ? "Reportable incidents are notified to the NDIS Commission within 24 hours of key personnel becoming aware. Aged care SIRS Priority 1 incidents follow the same 24-hour clock. This demo records the flag only — it does not lodge the notice."
+            : "Not marked reportable. A death, serious injury, abuse or neglect, unlawful contact, sexual misconduct, or unauthorised restrictive practice must be notified to the NDIS Commission within 24 hours."}
+        </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Btn to={`/clients/${i.clientId}`}>Client file</Btn>
           <Btn to={`/staff/${i.staffId}`} variant="ghost">Reporter</Btn>
@@ -1117,7 +1226,7 @@ export function InvoicesScreen() {
               <span className="block text-xs text-muted">{db.clientName(i.clientId)} · {i.period}</span>
             </span>
             <span className="flex items-center gap-2">
-              <span className="tabular-nums">${i.amount.toLocaleString()}</span>
+              <span className="tabular-nums">{money(i.amount)}</span>
               <Pill status={i.status}>{i.status}</Pill>
             </span>
           </Link>
@@ -1164,15 +1273,18 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
       <Crumb items={[{ to: "/invoices", label: "Invoices" }, { label: i.number }]} />
       <PageHead title={i.number} sub={`${db.clientName(i.clientId)} · ${i.period}`} />
       <Card>
-        <p className="text-3xl font-semibold tabular-nums">${i.amount.toLocaleString()}</p>
+        <p className="text-3xl font-semibold tabular-nums">{money(i.amount)}</p>
+        <p className="mt-2 text-xs leading-relaxed text-muted">{CLAIM_NOTE}</p>
         <div className="mt-3"><Pill status={i.status}>{i.status}</Pill></div>
         {pullNote ? <p className="mt-2 text-sm text-muted">{pullNote}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <Btn to={`/clients/${i.clientId}`}>Client file</Btn>
           <Btn to="/timesheets" search={{ client: i.clientId }} variant="ghost">Timesheets</Btn>
           <Btn variant="ghost" onClick={() => {
-            const n = db.attachApprovedHours(i.id);
-            setPullNote(n ? `Attached ${n} approved timesheet${n === 1 ? "" : "s"}.` : "No unclaimed approved hours for this client.");
+            const pulled = db.attachApprovedHours(i.id);
+            setPullNote(pulled.count
+              ? `Attached ${pulled.count} approved timesheet${pulled.count === 1 ? "" : "s"} · ${money(pulled.amount)}.`
+              : "No unclaimed approved hours for this client.");
           }}>Pull approved hours</Btn>
           {i.status === "draft" ? <Btn onClick={() => db.setInvoiceStatus(i.id, "sent")}>Mark sent</Btn> : null}
           {i.status === "sent" ? <Btn onClick={() => db.setInvoiceStatus(i.id, "paid")}>Mark paid</Btn> : null}
@@ -1212,7 +1324,7 @@ export function MaureenScreen() {
       reply = `${client.name} — ${client.suburb}, ${client.plan}, ${client.hours} hrs. ${client.goals}`;
       href = `/clients/${client.id}`;
     } else if (staff) {
-      reply = `${staff.name} · ${staff.title}. WWCC ${staff.wwcc}, first aid ${staff.firstAid}.`;
+      reply = `${staff.name} · ${staff.title}. NDIS screening ${staff.ndisScreening}, WWCC ${staff.wwcc}, first aid ${staff.firstAid}.`;
       href = `/staff/${staff.id}`;
     } else if (lower.includes("roster") || lower.includes("shift")) {
       const live = db.shifts.filter((s) => s.status === "in_progress" || s.status === "scheduled").slice(0, 4);
@@ -1227,13 +1339,18 @@ export function MaureenScreen() {
       reply = `${db.timesheets.filter((t) => t.status !== "approved").length} timesheets still need approval.`;
       href = role === "support_worker" ? "/my-timesheets" : "/timesheets";
     } else if (lower.includes("invoice") || lower.includes("claim")) {
-      reply = `${db.invoices.filter((i) => i.status !== "paid").length} invoices unclaimed.`;
-      href = canAccess(role, "admin") ? "/invoices" : "/home";
+      if (!canAccess(role, "admin")) {
+        reply = "The invoice book is on the admin desk.";
+        href = role === "support_worker" ? "/worker" : "/home";
+      } else {
+        reply = `${db.invoices.filter((i) => i.status !== "paid").length} invoices not yet paid.`;
+        href = "/invoices";
+      }
     } else if (lower.includes("request")) {
       reply = db.requests[0] ? db.requests[0].title : "No open requests.";
       href = db.requests[0] ? `/requests/${db.requests[0].id}` : "/requests";
     } else if (lower.includes("wwcc") || lower.includes("training") || lower.includes("compliance")) {
-      reply = "First aid and WWCC sit on each staff file.";
+      reply = "NDIS Worker Screening, WWCC and first aid sit on each staff file. Expired clearance or leave blocks the roster.";
       href = role === "support_worker" ? "/my-compliance" : "/compliance";
     } else if (lower.includes("onboard")) {
       const pending = db.onboarding.find((o) => o.subjectType === "client" && o.status === "pending");
@@ -1296,8 +1413,8 @@ export function AnalyticsScreen() {
           <Link to="/roster" className="text-sm text-primary">Roster</Link>
         </Card>
         <Card>
-          <p className="text-3xl font-semibold">${(unclaimed / 1000).toFixed(1)}k</p>
-          <p className="text-sm text-muted">Unclaimed</p>
+          <p className="text-3xl font-semibold">{money(unclaimed)}</p>
+          <p className="text-sm text-muted">Unpaid</p>
           <Link to="/invoices" className="text-sm text-primary">Invoices</Link>
         </Card>
       </div>
@@ -1326,7 +1443,7 @@ export function FinancialsScreen() {
   const total = db.invoices.reduce((s, i) => s + i.amount, 0);
   return (
     <Guard min="admin">
-      <PageHead title="Financials" sub={`Book total $${total.toLocaleString()}`} actions={<Btn to="/invoices">Invoices</Btn>} />
+      <PageHead title="Financials" sub={`Book total ${money(total)}`} actions={<Btn to="/invoices">Invoices</Btn>} />
       <Card>
         {db.clients.map((c) => {
           const inv = db.invoices.filter((i) => i.clientId === c.id);
@@ -1338,7 +1455,7 @@ export function FinancialsScreen() {
                 {inv.map((i) => (
                   <Link key={i.id} to={`/invoices/${i.id}` as never} className="text-sm text-primary hover:underline">{i.number}</Link>
                 ))}
-                <span className="tabular-nums">${sum.toLocaleString()}</span>
+              <span className="tabular-nums">{money(sum)}</span>
               </span>
             </div>
           );
@@ -1352,8 +1469,8 @@ export function ReportsScreen() {
   const db = useLookups();
   const openIncidents = db.incidents.filter((i) => i.status !== "closed");
   const waiting = db.timesheets.filter((t) => t.status !== "approved");
-  const expiring = db.staff.filter((s) => s.wwcc !== "ok" || s.firstAid !== "ok");
-  const unclaimed = db.invoices.filter((i) => i.status !== "paid");
+  const expiring = db.staff.filter((s) => s.wwcc !== "ok" || s.firstAid !== "ok" || s.ndisScreening !== "ok");
+  const unpaid = db.invoices.filter((i) => i.status !== "paid");
   return (
     <Guard min="admin">
       <PageHead
@@ -1379,10 +1496,10 @@ export function ReportsScreen() {
             <h2 className="font-semibold">Compliance</h2>
             <Link to="/compliance" className="text-sm text-primary">Register</Link>
           </div>
-          {expiring.length === 0 ? <p className="text-sm text-muted">WWCC and first aid are current.</p> : expiring.map((s) => (
+          {expiring.length === 0 ? <p className="text-sm text-muted">Screening, WWCC and first aid are current.</p> : expiring.map((s) => (
             <Link key={s.id} to={`/staff/${s.id}` as never} className="mt-2 flex justify-between text-sm hover:underline">
               <span>{s.name}</span>
-              <span className="text-muted">WWCC {s.wwcc} · aid {s.firstAid}</span>
+              <span className="text-muted">NDIS {s.ndisScreening} · WWCC {s.wwcc} · aid {s.firstAid}</span>
             </Link>
           ))}
         </Card>
@@ -1402,10 +1519,10 @@ export function ReportsScreen() {
             <h2 className="font-semibold">Claims</h2>
             <Link to="/financials" className="text-sm text-primary">Financials</Link>
           </div>
-          <p className="text-sm">${unclaimed.reduce((s, i) => s + i.amount, 0).toLocaleString()} still unclaimed.</p>
-          {unclaimed.map((i) => (
+          <p className="text-sm">{money(unpaid.reduce((s, i) => s + i.amount, 0))} not yet paid.</p>
+          {unpaid.map((i) => (
             <Link key={i.id} to={`/invoices/${i.id}` as never} className="mt-2 block text-sm hover:underline">
-              {i.number} · {db.clientName(i.clientId)} · ${i.amount.toLocaleString()}
+              {i.number} · {db.clientName(i.clientId)} · {money(i.amount)}
             </Link>
           ))}
         </Card>
@@ -1460,8 +1577,17 @@ export function SettingsScreen() {
         </Card>
         <Card>
           <h2 className="font-semibold">Demo data</h2>
-          <p className="mb-3 text-sm text-muted">Reset the local book, including organisation details, to the seed set.</p>
+          <p className="mb-3 text-sm text-muted">Reset deletes the local record on this browser, including organisation details, and restores the seed set. Do not store a real participant here.</p>
           <Btn variant="ghost" onClick={() => { db.reset(); setOrg(seed.org); setSaved(false); }}>Reset demo data</Btn>
+        </Card>
+        <Card className="sm:col-span-2">
+          <h2 className="font-semibold">Privacy</h2>
+          <div className="mt-2">
+            <PrivacyNotice variant="full" />
+          </div>
+          <div className="mt-3">
+            <Btn to="/compliance" variant="ghost">Compliance desk</Btn>
+          </div>
         </Card>
       </div>
     </Guard>
@@ -1473,7 +1599,8 @@ export function TidyUpScreen() {
   const items = [
     ...db.timesheets.filter((t) => t.status !== "approved").map((t) => ({ href: `/timesheets/${t.id}`, title: `Timesheet ${db.staffName(t.staffId)}`, status: t.status })),
     ...db.incidents.filter((i) => i.status !== "closed").map((i) => ({ href: `/incidents/${i.id}`, title: `Incident ${db.clientName(i.clientId)}`, status: i.status })),
-    ...db.staff.filter((s) => s.firstAid !== "ok").map((s) => ({ href: `/staff/${s.id}`, title: `First aid ${s.name}`, status: s.firstAid })),
+    ...db.staff.filter((s) => s.firstAid !== "ok" || s.wwcc !== "ok" || s.ndisScreening !== "ok").map((s) => ({ href: `/staff/${s.id}`, title: `Clearance ${s.name}`, status: s.firstAid !== "ok" ? s.firstAid : s.wwcc !== "ok" ? s.wwcc : s.ndisScreening })),
+    ...db.incidents.filter((i) => i.reportable && i.status !== "closed").map((i) => ({ href: `/incidents/${i.id}`, title: `24h notice ${db.clientName(i.clientId)}`, status: "high" })),
     ...db.invoices.filter((i) => i.status === "draft").map((i) => ({ href: `/invoices/${i.id}`, title: i.number, status: i.status })),
     ...db.onboarding.filter((o) => o.status === "pending").map((o) => ({ href: o.subjectType === "client" ? `/clients/${o.subjectId}` : `/staff/${o.subjectId}`, title: o.name, status: o.status })),
     ...db.requests.filter((r) => r.status !== "resolved").map((r) => ({ href: `/requests/${r.id}`, title: r.title, status: r.status })),
@@ -1557,7 +1684,7 @@ export function RequestsScreen() {
           <Link key={r.id} to={`/requests/${r.id}` as never} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-3 last:border-0">
             <div>
               <p className="font-semibold">{isClient ? r.title : db.clientName(r.clientId)}</p>
-              {isClient ? null : <p className="text-sm">{r.title}</p>}
+              <p className="text-sm text-muted">{isClient ? REQUEST_LABEL[r.type] : `${r.title} · ${REQUEST_LABEL[r.type]}`}</p>
             </div>
             <Pill status={r.status}>{r.status}</Pill>
           </Link>
@@ -1575,7 +1702,7 @@ export function RequestsScreen() {
                 title: String(fd.get("title")),
                 status: "pending",
                 notes: String(fd.get("notes") || ""),
-                type: "other",
+                type: (String(fd.get("type") || "other") as RequestKind),
               });
               setOpen(false);
               void nav({ to: "/requests/$requestId", params: { requestId: id } });
@@ -1588,6 +1715,13 @@ export function RequestsScreen() {
                 </Select>
               </Field>
             )}
+            <Field label="Type">
+              <Select name="type" defaultValue="other">
+                {(Object.keys(REQUEST_LABEL) as (keyof typeof REQUEST_LABEL)[]).map((k) => (
+                  <option key={k} value={k}>{REQUEST_LABEL[k]}</option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Request"><Input name="title" required /></Field>
             <Field label="Details"><Textarea name="notes" rows={3} /></Field>
             <Btn type="submit">Save and open</Btn>
@@ -1601,6 +1735,7 @@ export function RequestsScreen() {
 export function RequestDetailScreen({ requestId }: { requestId: string }) {
   const { session } = useSession();
   const db = useLookups();
+  const [reply, setReply] = useState("");
   const r = db.requests.find((x) => x.id === requestId);
   const isClient = session?.role === "client";
   if (!r) return <Missing what="request" back="/requests" />;
@@ -1610,16 +1745,25 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
   return (
     <>
       <Crumb items={[{ to: isClient ? "/client-portal" : "/requests", label: isClient ? "Portal" : "Requests" }, { label: r.title }]} />
-      <PageHead title={r.title} sub={isClient ? r.notes || "We have this on the floor." : db.clientName(r.clientId)} />
+      <PageHead title={r.title} sub={isClient ? REQUEST_LABEL[r.type] : `${db.clientName(r.clientId)} · ${REQUEST_LABEL[r.type]}`} />
       <Card>
         <Pill status={r.status}>{r.status}</Pill>
         {r.notes ? <p className="mt-3 text-sm">{r.notes}</p> : null}
+        {r.reply ? <p className="mt-3 text-sm"><span className="font-semibold">Team reply. </span>{r.reply}</p> : null}
+        {!isClient && r.status !== "resolved" ? (
+          <div className="mt-4">
+            <Field label="Reply to the participant">
+              <Textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2} placeholder="They will see this on the request" />
+            </Field>
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
-          {isClient ? <Btn to="/requests" variant="ghost">All requests</Btn> : <Btn to={`/clients/${r.clientId}`}>Client file</Btn>}
+          {isClient ? <Btn to="/client-portal" variant="ghost">Portal</Btn> : <Btn to={`/clients/${r.clientId}`}>Client file</Btn>}
+          {isClient ? <Btn to="/requests" variant="ghost">All requests</Btn> : null}
           {!isClient && r.status !== "resolved" ? (
             <>
               {r.status === "pending" ? <Btn variant="ghost" onClick={() => db.setRequestStatus(r.id, "in_progress")}>Start</Btn> : null}
-              <Btn onClick={() => db.setRequestStatus(r.id, "resolved")}>Resolve</Btn>
+              <Btn onClick={() => db.setRequestStatus(r.id, "resolved", reply)}>Resolve</Btn>
             </>
           ) : null}
         </div>
@@ -1673,6 +1817,7 @@ export function WorkerHomeScreen() {
               <Pill status={t.status}>{t.status}</Pill>
             </Link>
           ))}
+          {mine.length === 0 ? <p className="text-sm text-muted">None yet. Check out to draft one.</p> : null}
         </Card>
       </div>
     </>
@@ -1689,6 +1834,10 @@ export function WorkerCheckInScreen() {
     db.clients[0]?.id ??
     "c1";
   const [clientId, setClientId] = useState(suggested);
+  const me = db.staff.find((s) => s.id === staffId);
+  const hold = me ? rosterHold(me) : "Your staff file is missing.";
+  const warn = me && !hold ? rosterWarn(me) : null;
+  const [note, setNote] = useState("");
   return (
     <>
       <Crumb items={[{ to: "/worker", label: "My shift" }, { label: "Check-in" }]} />
@@ -1711,8 +1860,11 @@ export function WorkerCheckInScreen() {
                 {db.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
+            {hold ? <p className="mb-3 text-sm text-bad">{hold}. Check-in stays blocked until this is cleared.</p> : null}
+            {warn ? <p className="mb-3 text-sm text-warn">{warn}. Still clear to work.</p> : null}
+            {note ? <p className="mb-3 text-sm text-muted">{note}</p> : null}
             <div className="flex flex-wrap gap-2">
-              <Btn onClick={() => db.checkIn(staffId, clientId)}>Check in now</Btn>
+              <Btn disabled={!!hold} onClick={() => setNote(db.checkIn(staffId, clientId) ?? "Checked in.")}>Check in now</Btn>
               <Btn to={`/clients/${clientId}`} variant="ghost">Client file</Btn>
             </div>
           </>
@@ -1742,7 +1894,7 @@ export function WorkerNotesScreen() {
               shift: String(fd.get("shift") || "current"),
               body: String(fd.get("body")),
               kind: "daily care",
-              visibleToClient: true,
+              visibleToClient: fd.get("share") === "on",
             });
             void nav({ to: "/case-notes/$noteId", params: { noteId: id } });
           }}
@@ -1752,6 +1904,10 @@ export function WorkerNotesScreen() {
           </Field>
           <Field label="Shift"><Input name="shift" defaultValue="07:00–15:00" /></Field>
           <Field label="Note"><Textarea name="body" rows={5} required /></Field>
+          <label className="mb-3 flex items-start gap-2 text-sm">
+            <input type="checkbox" name="share" className="mt-0.5 size-4" />
+            <span>Share with the participant’s portal. Leave off for staff-only observations.</span>
+          </label>
           <Btn type="submit">Save to case notes</Btn>
         </form>
       </Card>
@@ -1787,7 +1943,7 @@ export function MyTimesheetsScreen() {
   const id = session?.staffId || "s1";
   return (
     <>
-      <PageHead title="My timesheets" sub="Drafts from check-out land here" />
+      <PageHead title="My timesheets" sub="Drafts from check-out land here" actions={<Btn to="/timesheets" search={{ add: "1" }}>Log hours</Btn>} />
       <Card>
         {db.timesheets.filter((t) => t.staffId === id).map((t) => (
           <div key={t.id} className="flex justify-between py-3">
@@ -1811,7 +1967,12 @@ export function MyComplianceScreen() {
   return (
     <>
       <PageHead title="My compliance" sub={s.name} actions={<Btn to={`/staff/${s.id}`} variant="ghost">Full profile</Btn>} />
+      <Card className="mb-3">
+        <h2 className="mb-2 font-semibold">Privacy on shift</h2>
+        <PrivacyNotice variant="worker" />
+      </Card>
       <Card>
+        <p className="flex justify-between py-2">NDIS screening {s.ndisScreeningExpiry} <Pill status={s.ndisScreening}>{s.ndisScreening}</Pill></p>
         <p className="flex justify-between py-2">WWCC {s.wwccExpiry} <Pill status={s.wwcc}>{s.wwcc}</Pill></p>
         <p className="flex justify-between py-2">First aid {s.firstAidExpiry} <Pill status={s.firstAid}>{s.firstAid}</Pill></p>
         {db.training.filter((t) => t.staffId === s.id).map((t) => (
@@ -1851,12 +2012,17 @@ export function ComplianceScreen() {
   const db = useLookups();
   return (
     <Guard min="manager">
-      <PageHead title="Compliance" sub="WWCC and first aid" actions={<Btn to="/staff/compliance">By staff</Btn>} />
+      <PageHead title="Compliance" sub="NDIS screening, WWCC, first aid, and privacy" actions={<Btn to="/staff/compliance">Full register</Btn>} />
+      <Card className="mb-3">
+        <h2 className="mb-2 font-semibold">How personal information is handled</h2>
+        <PrivacyNotice variant="full" />
+      </Card>
       <Card>
         {db.staff.map((s) => (
           <Link key={s.id} to={`/staff/${s.id}` as never} className="flex items-center justify-between py-3">
             <span className="font-semibold">{s.name}</span>
-            <span className="flex gap-2">
+            <span className="flex flex-wrap justify-end gap-2">
+              <Pill status={s.ndisScreening}>NDIS</Pill>
               <Pill status={s.wwcc}>WWCC</Pill>
               <Pill status={s.firstAid}>First aid</Pill>
             </span>
@@ -1880,7 +2046,7 @@ export function HrScreen() {
             </Link>
             <div className="flex items-center gap-2">
               <Pill status={s.status}>{s.status}</Pill>
-              {s.status === "leave" ? <Btn onClick={() => db.setStaffStatus(s.id, "active")}>Return to work</Btn> : null}
+              {s.status === "leave" ? <Btn onClick={() => db.setStaffStatus(s.id, "active")}>Return to work</Btn> : <Btn variant="ghost" onClick={() => db.setStaffStatus(s.id, "leave")}>Put on leave</Btn>}
             </div>
           </div>
         ))}
@@ -1890,5 +2056,26 @@ export function HrScreen() {
 }
 
 export function StaffComplianceScreen() {
-  return <ComplianceScreen />;
+  const db = useLookups();
+  return (
+    <Guard min="manager">
+      <PageHead title="Staff compliance" sub="NDIS Worker Screening, WWCC, and first aid" actions={<Btn to="/compliance" variant="ghost">Privacy and exceptions</Btn>} />
+      <Card>
+        {db.staff.map((s) => (
+          <Link key={s.id} to={`/staff/${s.id}` as never} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-3 last:border-0">
+            <span>
+              <span className="block font-semibold">{s.name}</span>
+              <span className="text-xs text-muted">Screening {s.ndisScreeningExpiry} · WWCC {s.wwccExpiry} · Aid {s.firstAidExpiry}</span>
+            </span>
+            <span className="flex flex-wrap justify-end gap-2">
+              <Pill status={s.ndisScreening}>NDIS</Pill>
+              <Pill status={s.wwcc}>WWCC</Pill>
+              <Pill status={s.firstAid}>First aid</Pill>
+              {s.status === "leave" ? <Pill status="leave">leave</Pill> : null}
+            </span>
+          </Link>
+        ))}
+      </Card>
+    </Guard>
+  );
 }

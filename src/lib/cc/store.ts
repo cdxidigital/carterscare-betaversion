@@ -3,30 +3,33 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import type { CarePlan, Client, DB, Incident, Invoice, Note, Org, RequestItem, Shift, Staff, Timesheet, Training } from "./types";
 import { seed, todayLabel } from "./seed";
 import { hoursBetween, perthClock, perthShortDate, perthShortDateYear, uid, displayClock } from "@/lib/utils";
+import { claimCents, rosterHold } from "./compliance";
 
 type Actions = {
   hydrated: boolean;
   setHydrated: (v: boolean) => void;
   addClient: (c: Omit<Client, "id" | "status" | "staffIds" | "coordinator" | "goals"> & Partial<Client>) => string;
-  addStaff: (s: Omit<Staff, "id" | "status" | "wwcc" | "firstAid" | "wwccExpiry" | "firstAidExpiry" | "employment" | "role"> & Partial<Staff>) => string;
+  addStaff: (s: Omit<Staff, "id" | "status" | "wwcc" | "firstAid" | "wwccExpiry" | "firstAidExpiry" | "ndisScreening" | "ndisScreeningExpiry" | "employment" | "role"> & Partial<Staff>) => string;
   addNote: (n: Omit<Note, "id">) => string;
   addIncident: (i: Omit<Incident, "id">) => string;
   addTimesheet: (t: Omit<Timesheet, "id">) => string;
   setTimesheetStatus: (id: string, status: Timesheet["status"]) => void;
   setIncidentStatus: (id: string, status: Incident["status"]) => void;
+  setIncidentFollowUp: (id: string, followUp: string) => void;
   setInvoiceStatus: (id: string, status: Invoice["status"]) => void;
-  checkIn: (staffId: string, clientId: string) => void;
+  checkIn: (staffId: string, clientId: string) => string | null;
   checkOut: (staffId: string) => void;
   completeTask: (id: string) => void;
   addRequest: (r: Omit<RequestItem, "id">) => string;
-  setRequestStatus: (id: string, status: RequestItem["status"]) => void;
+  setRequestStatus: (id: string, status: RequestItem["status"], reply?: string) => void;
   addCarePlan: (p: Omit<CarePlan, "id">) => string;
   assignStaff: (clientId: string, staffId: string) => void;
   setStaffStatus: (id: string, status: Staff["status"]) => void;
   setTrainingStatus: (id: string, status: Training["status"]) => void;
+  markClearance: (id: string, kind: "ndis" | "wwcc" | "firstAid") => void;
   addInvoice: (i: Omit<Invoice, "id" | "number"> & { number?: string }) => string;
-  attachApprovedHours: (invoiceId: string) => number;
-  addShift: (s: Omit<Shift, "id" | "status"> & { status?: Shift["status"] }) => string;
+  attachApprovedHours: (invoiceId: string) => { count: number; amount: number };
+  addShift: (s: Omit<Shift, "id" | "status"> & { status?: Shift["status"] }) => { id: string } | { error: string };
   setCarePlanStatus: (id: string, status: CarePlan["status"]) => void;
   setClientRisk: (id: string, risk: Client["risk"]) => void;
   setOrg: (patch: Partial<Org>) => void;
@@ -42,20 +45,24 @@ export const useCC = create<DB & Actions>()(
       addClient: (c) => {
         const id = uid("c");
         const name = c.name;
+        const consented = c.privacyConsent !== false;
         set({
           clients: [
             {
-              id,
               status: "onboarding",
               staffIds: [],
               coordinator: "David Chen",
               goals: "To be confirmed at intake.",
               ...c,
+              id,
+              privacyConsent: consented,
+              consentAt: consented ? perthShortDateYear() : undefined,
             },
             ...get().clients,
           ],
           onboarding: [
             { id: uid("ob"), subjectType: "client", subjectId: id, name: "Service agreement signed", status: "pending" },
+            { id: uid("ob"), subjectType: "client", subjectId: id, name: "Privacy consent recorded", status: consented ? "done" : "pending" },
             { id: uid("ob"), subjectType: "client", subjectId: id, name: "Risk assessment complete", status: "pending" },
             ...get().onboarding,
           ],
@@ -82,8 +89,10 @@ export const useCC = create<DB & Actions>()(
               status: "active",
               wwcc: "ok",
               firstAid: "ok",
+              ndisScreening: "missing",
               wwccExpiry: "TBC",
               firstAidExpiry: "TBC",
+              ndisScreeningExpiry: "Not recorded",
               employment: "casual",
               role: "support_worker",
               ...s,
@@ -121,9 +130,16 @@ export const useCC = create<DB & Actions>()(
         set({ timesheets: get().timesheets.map((t) => (t.id === id ? { ...t, status } : t)) }),
       setIncidentStatus: (id, status) =>
         set({ incidents: get().incidents.map((i) => (i.id === id ? { ...i, status } : i)) }),
+      setIncidentFollowUp: (id, followUp) =>
+        set({ incidents: get().incidents.map((i) => (i.id === id ? { ...i, followUp } : i)) }),
       setInvoiceStatus: (id, status) =>
         set({ invoices: get().invoices.map((i) => (i.id === id ? { ...i, status } : i)) }),
       checkIn: (staffId, clientId) => {
+        const person = get().staff.find((s) => s.id === staffId);
+        if (!person) return "That worker is not on file.";
+        const hold = rosterHold(person);
+        if (hold) return `${hold}. Check-in stays blocked until this is cleared.`;
+        if (!get().clients.some((c) => c.id === clientId)) return "That participant is not on file.";
         const day = todayLabel;
         const clock = perthClock();
         const hour = Number(clock.slice(0, 2));
@@ -147,6 +163,7 @@ export const useCC = create<DB & Actions>()(
           ],
           shifts,
         });
+        return null;
       },
       checkOut: (staffId) => {
         const open = get().checkins.find((c) => c.staffId === staffId && !c.outAt);
@@ -180,9 +197,14 @@ export const useCC = create<DB & Actions>()(
         });
       },
       completeTask: (id) => {
-        const tasks = get().onboarding.map((t) => (t.id === id ? { ...t, status: "done" as const } : t));
         const task = get().onboarding.find((t) => t.id === id);
+        const tasks = get().onboarding.map((t) => (t.id === id ? { ...t, status: "done" as const } : t));
         let clients = get().clients;
+        if (task?.subjectType === "client" && task.name === "Privacy consent recorded") {
+          clients = clients.map((c) =>
+            c.id === task.subjectId ? { ...c, privacyConsent: true, consentAt: c.consentAt || perthShortDateYear() } : c,
+          );
+        }
         if (task?.subjectType === "client") {
           const pending = tasks.filter(
             (t) => t.subjectType === "client" && t.subjectId === task.subjectId && t.status === "pending",
@@ -198,8 +220,12 @@ export const useCC = create<DB & Actions>()(
         set({ requests: [{ ...r, id }, ...get().requests] });
         return id;
       },
-      setRequestStatus: (id, status) =>
-        set({ requests: get().requests.map((r) => (r.id === id ? { ...r, status } : r)) }),
+      setRequestStatus: (id, status, reply) =>
+        set({
+          requests: get().requests.map((r) =>
+            r.id === id ? { ...r, status, ...(reply?.trim() ? { reply: reply.trim() } : {}) } : r,
+          ),
+        }),
       addCarePlan: (p) => {
         const id = uid("cp");
         set({ carePlans: [{ id, ...p }, ...get().carePlans] });
@@ -215,8 +241,24 @@ export const useCC = create<DB & Actions>()(
       },
       setStaffStatus: (id, status) =>
         set({ staff: get().staff.map((s) => (s.id === id ? { ...s, status } : s)) }),
-      setTrainingStatus: (id, status) =>
-        set({ training: get().training.map((t) => (t.id === id ? { ...t, status } : t)) }),
+      setTrainingStatus: (id, status) => {
+        const item = get().training.find((t) => t.id === id);
+        const training = get().training.map((t) => (t.id === id ? { ...t, status } : t));
+        const staff =
+          item && status === "current" && /first aid/i.test(item.name)
+            ? get().staff.map((s) => (s.id === item.staffId ? { ...s, firstAid: "ok" as const, firstAidExpiry: "Current" } : s))
+            : get().staff;
+        set({ training, staff });
+      },
+      markClearance: (id, kind) =>
+        set({
+          staff: get().staff.map((s) => {
+            if (s.id !== id) return s;
+            if (kind === "ndis") return { ...s, ndisScreening: "ok" as const, ndisScreeningExpiry: "Current" };
+            if (kind === "wwcc") return { ...s, wwcc: "ok" as const, wwccExpiry: "Current" };
+            return { ...s, firstAid: "ok" as const, firstAidExpiry: "Current" };
+          }),
+        }),
       addInvoice: (i) => {
         const id = uid("inv");
         const number = i.number ?? `INV-${1047 + get().invoices.length}`;
@@ -225,29 +267,33 @@ export const useCC = create<DB & Actions>()(
       },
       attachApprovedHours: (invoiceId) => {
         const inv = get().invoices.find((i) => i.id === invoiceId);
-        if (!inv) return 0;
+        if (!inv) return { count: 0, amount: 0 };
         const claimed = new Set(get().invoices.flatMap((i) => i.timesheetIds));
         const extra = get().timesheets.filter(
           (t) => t.clientId === inv.clientId && t.status === "approved" && !claimed.has(t.id),
         );
-        if (extra.length === 0) return 0;
-        const add = extra.reduce((sum, t) => sum + t.hours * 67, 0);
+        if (extra.length === 0) return { count: 0, amount: 0 };
+        const add = extra.reduce((sum, t) => sum + claimCents(t.hours, t.date), 0) / 100;
         set({
           invoices: get().invoices.map((i) =>
             i.id === invoiceId
-              ? { ...i, timesheetIds: [...i.timesheetIds, ...extra.map((t) => t.id)], amount: i.amount + add }
+              ? { ...i, timesheetIds: [...i.timesheetIds, ...extra.map((t) => t.id)], amount: Math.round((i.amount + add) * 100) / 100 }
               : i,
           ),
         });
-        return extra.length;
+        return { count: extra.length, amount: add };
       },
       addShift: (s) => {
+        const person = get().staff.find((x) => x.id === s.staffId);
+        if (!person) return { error: "That worker is not on file." };
+        const hold = rosterHold(person);
+        if (hold) return { error: `${hold}. They cannot be rostered until this is cleared.` };
         const id = uid("sh");
         const next: Shift = { id, status: "scheduled", ...s };
         set({
           shifts: [...get().shifts.filter((x) => !(x.staffId === s.staffId && x.day === s.day && x.window === s.window)), next],
         });
-        return id;
+        return { id };
       },
       setCarePlanStatus: (id, status) =>
         set({ carePlans: get().carePlans.map((p) => (p.id === id ? { ...p, status } : p)) }),
@@ -256,7 +302,7 @@ export const useCC = create<DB & Actions>()(
       reset: () => set({ ...seed, hydrated: true }),
     }),
     {
-      name: "cc-platform-db-v23",
+      name: "cc-platform-db-v26",
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
       partialize: (s) => ({

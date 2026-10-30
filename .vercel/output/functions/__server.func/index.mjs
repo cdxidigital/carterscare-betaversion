@@ -15,7 +15,8 @@ var grokOgIdentity = { "site": {
 	"title": "CartersCare",
 	"card": "custom",
 	"color": "9B188F",
-	"image": "/og.jpg"
+	"image": "/og.jpg",
+	"banner": "/x-banner.jpg"
 } };
 //#endregion
 //#region scripts/grok-pwa-shared.mjs

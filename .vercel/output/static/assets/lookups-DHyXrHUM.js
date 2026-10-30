@@ -1,1 +1,0 @@
-import{a as e}from"./session-C7Yex4aw.js";function t(){let t=e(),n=e=>t.staff.find(t=>t.id===e)?.name??`Unknown staff`,r=e=>t.clients.find(t=>t.id===e)?.name??`Unknown client`;return{...t,staffName:n,clientName:r}}export{t};

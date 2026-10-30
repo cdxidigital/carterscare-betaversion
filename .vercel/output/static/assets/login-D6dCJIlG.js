@@ -1,0 +1,1 @@
+import{A as e,M as t,i as n,k as r,w as i}from"./session-BCIKEhWl.js";import{t as a}from"./login-page-W4X3A8KO.js";var o=t(e()),s=r();function c(){let{session:e,ready:t}=n();return(0,o.useEffect)(()=>{if(!t||!e)return;let n=i(e.role);window.location.pathname!==n&&window.location.assign(n)},[t,e]),(0,s.jsx)(a,{})}export{c as component};

@@ -1,1 +1,0 @@
-import{T as e}from"./session-C7Yex4aw.js";import{v as t}from"./screens-DipAHieA.js";import{s as n}from"./index-DOJ5eXTG.js";var r=e(),i=function(){let{noteId:e}=n.useParams();return(0,r.jsx)(t,{noteId:e})};export{i as component};

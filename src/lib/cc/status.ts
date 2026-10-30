@@ -6,6 +6,6 @@ export function toneFor(status: string): StatusTone {
     return "ok";
   if (["submitted", "sent", "investigating", "medium", "expiring", "onboarding", "draft", "open", "moderate", "pending", "due", "scheduled", "review"].includes(s))
     return "warn";
-  if (["high", "expired", "leave", "overdue"].includes(s)) return "bad";
+  if (["high", "expired", "leave", "overdue", "missing"].includes(s)) return "bad";
   return "info";
 }

@@ -1,0 +1,1 @@
+import{k as e}from"./session-BCIKEhWl.js";import{M as t}from"./screens-BO6AZHM4.js";import{t as n}from"./index-R9adpIB_.js";var r=e(),i=function(){let{timesheetId:e}=n.useParams();return(0,r.jsx)(t,{timesheetId:e})};export{i as component};

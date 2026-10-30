@@ -115,17 +115,24 @@ export function AppShell() {
   const hits = useMemo(() => {
     const query = q.trim().toLowerCase();
     if (!query || !session) return [];
+    const allowed =
+      session.role === "support_worker" && session.staffId
+        ? new Set(clients.filter((c) => c.staffIds.includes(session.staffId as string)).map((c) => c.id))
+        : session.role === "client" && session.clientId
+          ? new Set([session.clientId])
+          : null;
+    const inBook = (clientId: string) => !allowed || allowed.has(clientId);
     const people = [
-      ...clients.map((c) => ({ to: `/clients/${c.id}`, label: c.name, kind: "Client" })),
-      ...staff.map((s) => ({ to: `/staff/${s.id}`, label: s.name, kind: "Staff" })),
-      ...notes.map((n) => ({
+      ...clients.filter((c) => inBook(c.id)).map((c) => ({ to: `/clients/${c.id}`, label: c.name, kind: "Client" })),
+      ...(session.role === "client" ? [] : staff.map((s) => ({ to: `/staff/${s.id}`, label: s.name, kind: "Staff" }))),
+      ...notes.filter((n) => inBook(n.clientId) && (session.role !== "client" || n.visibleToClient !== false)).map((n) => ({
         to: `/case-notes/${n.id}`,
         label: n.body.slice(0, 60),
         kind: "Note",
       })),
-      ...incidents.map((i) => ({ to: `/incidents/${i.id}`, label: i.summary, kind: "Incident" })),
-      ...requests.map((r) => ({ to: `/requests/${r.id}`, label: r.title, kind: "Request" })),
-      ...carePlans.map((p) => ({ to: `/clients/${p.clientId}`, label: p.name, kind: "Care plan" })),
+      ...(session.role === "client" ? [] : incidents.filter((i) => inBook(i.clientId)).map((i) => ({ to: `/incidents/${i.id}`, label: i.summary, kind: "Incident" }))),
+      ...requests.filter((r) => inBook(r.clientId)).map((r) => ({ to: `/requests/${r.id}`, label: r.title, kind: "Request" })),
+      ...carePlans.filter((p) => inBook(p.clientId)).map((p) => ({ to: `/clients/${p.clientId}`, label: p.name, kind: "Care plan" })),
     ];
     if (canAccess(session.role, "admin")) {
       people.push(...invoices.map((i) => ({ to: `/invoices/${i.id}`, label: i.number, kind: "Invoice" })));
@@ -145,7 +152,7 @@ export function AppShell() {
         <header className="sticky top-0 z-20 border-b border-portal/15 bg-surface/80 backdrop-blur-md">
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-4">
             <Link to="/client-portal" className="flex items-center gap-3">
-              <img src="/brand/mark.svg?v=3" alt="" className="size-10" />
+              <img src="/brand/mark.svg?v=4" alt="" className="size-10" />
               <span>
                 <span className="flex items-center gap-1.5">
                   <span className="text-base font-black tracking-tight">Carters<span className="text-primary">Care</span></span>
@@ -174,7 +181,7 @@ export function AppShell() {
     <div className="min-h-svh bg-bg lg:grid lg:grid-cols-[240px_1fr]">
       <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
         <div className="flex items-center gap-2">
-          <img src="/brand/mark.svg?v=3" alt="" className="size-9" />
+          <img src="/brand/mark.svg?v=4" alt="" className="size-9" />
           <strong className="text-sm font-black tracking-tight">Carters<span className="text-primary">Care</span></strong>
         </div>
         <button type="button" className="rounded-md border border-border p-2" onClick={() => setOpen((v) => !v)} aria-label="Menu">
@@ -186,7 +193,7 @@ export function AppShell() {
         data-testid="app-sidebar"
       >
         <div className="hidden items-center gap-3 border-b border-border px-4 py-4 lg:flex">
-          <img src="/brand/mark.svg?v=3" alt="" className="size-12" />
+          <img src="/brand/mark.svg?v=4" alt="" className="size-12" />
           <div className="leading-tight">
             <p className="text-lg font-black tracking-tight text-fg">Carters<span className="text-primary">Care</span></p>
             <p className="mt-0.5 text-[11px] font-semibold text-subtle">More room for care.</p>

@@ -1,0 +1,1 @@
+import{t as e}from"./shell-DKWdh0un.js";var t=e;export{t as component};

@@ -101,7 +101,7 @@ export function LoginPage() {
         <div className="hero-blob-green absolute top-1/2 left-1/3 size-48 rounded-full opacity-10" />
         <div className="relative z-10 max-w-lg">
           <div className="mb-8 flex items-center gap-3">
-            <img src="/brand/mark.svg?v=3" alt="" className="h-20 w-20" />
+            <img src="/brand/mark.svg?v=4" alt="" className="h-20 w-20" />
             <p className="text-4xl leading-none font-black tracking-tight text-fg">
               Carters<span className="text-primary">Care</span>
             </p>
@@ -127,7 +127,7 @@ export function LoginPage() {
       <section className="flex min-h-0 flex-1 justify-center overflow-y-auto p-4 py-8 sm:p-6">
         <div className="w-full max-w-sm">
           <div className="mb-6 flex items-center justify-center gap-2 lg:hidden">
-            <img src="/brand/mark.svg?v=3" alt="" className="h-12 w-12" />
+            <img src="/brand/mark.svg?v=4" alt="" className="h-12 w-12" />
             <p className="text-2xl leading-none font-black tracking-tight text-fg">
               Carters<span className="text-primary">Care</span>
             </p>

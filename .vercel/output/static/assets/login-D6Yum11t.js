@@ -1,1 +1,0 @@
-import{E as e,O as t,T as n,b as r,i}from"./session-C7Yex4aw.js";import{t as a}from"./login-page-Bi_MYjB_.js";var o=t(e()),s=n();function c(){let{session:e,ready:t}=i();return(0,o.useEffect)(()=>{if(!t||!e)return;let n=r(e.role);window.location.pathname!==n&&window.location.assign(n)},[t,e]),(0,s.jsx)(a,{})}export{c as component};

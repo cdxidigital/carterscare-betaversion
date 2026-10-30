@@ -53,6 +53,7 @@ export function Btn({
   onClick,
   variant = "primary",
   type = "button",
+  disabled = false,
 }: {
   children: ReactNode;
   to?: string;
@@ -60,12 +61,14 @@ export function Btn({
   onClick?: () => void;
   variant?: "primary" | "ghost" | "danger";
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   const cls = cn(
     "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-semibold transition-opacity duration-150",
     variant === "primary" && "bg-primary text-primary-fg hover:opacity-90",
     variant === "ghost" && "border border-border bg-surface text-fg hover:bg-bg",
     variant === "danger" && "bg-bad text-primary-fg hover:opacity-90",
+    disabled && "cursor-not-allowed opacity-50",
   );
   if (to) {
     return (
@@ -75,7 +78,7 @@ export function Btn({
     );
   }
   return (
-    <button type={type} onClick={onClick} className={cls}>
+    <button type={type} onClick={onClick} disabled={disabled} className={cls}>
       {children}
     </button>
   );

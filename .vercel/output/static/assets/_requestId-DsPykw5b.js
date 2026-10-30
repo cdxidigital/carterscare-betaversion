@@ -1,0 +1,1 @@
+import{k as e}from"./session-BCIKEhWl.js";import{S as t}from"./screens-BO6AZHM4.js";import{r as n}from"./index-R9adpIB_.js";var r=e(),i=function(){let{requestId:e}=n.useParams();return(0,r.jsx)(t,{requestId:e})};export{i as component};

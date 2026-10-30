@@ -82,12 +82,16 @@ export function hoursBetween(start: string, end: string) {
   const mins = (v: string) => {
     const m = v.match(/(\d{1,2}):(\d{2})/);
     if (!m) return null;
-    return Number(m[1]) * 60 + Number(m[2]);
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
   };
   const a = mins(start);
   const b = mins(end);
-  if (a == null || b == null || b <= a) return 1;
-  return Math.round(((b - a) / 60) * 10) / 10;
+  if (a == null || b == null || b === a) return 0;
+  const diff = b < a ? b + 24 * 60 - a : b - a;
+  return Math.round((diff / 60) * 10) / 10;
 }
 
 export function perthDate() {

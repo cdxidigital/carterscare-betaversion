@@ -65,7 +65,7 @@ export const NAV: NavItem[] = [
   { to: "/staff/compliance", label: "Staff Compliance", min: "manager", group: "Team Management", icon: "shield", tone: "indigo" },
   { to: "/compliance", label: "Compliance", min: "manager", group: "Team Management", icon: "shield", tone: "blue" },
   { to: "/onboarding", label: "Client Onboarding", min: "manager", group: "Team Management", icon: "onboard", tone: "green" },
-  { to: "/staff/hr", label: "HR & Docs", min: "admin", group: "Admin", icon: "briefcase", tone: "purple" },
+  { to: "/staff/hr", label: "HR", min: "admin", group: "Admin", icon: "briefcase", tone: "purple" },
   { to: "/analytics", label: "Analytics", min: "admin", group: "Admin", icon: "chart", tone: "indigo" },
   { to: "/invoices", label: "Invoices", min: "admin", group: "Admin", icon: "invoice", tone: "green" },
   { to: "/financials", label: "Financials", min: "admin", group: "Admin", icon: "wallet", tone: "teal" },

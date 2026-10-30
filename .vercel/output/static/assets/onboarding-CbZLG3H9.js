@@ -1,1 +1,0 @@
-import{b as e}from"./screens-DipAHieA.js";var t=e;export{t as component};

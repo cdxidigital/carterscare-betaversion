@@ -1,1 +1,0 @@
-import{T as e}from"./session-C7Yex4aw.js";import{i as t}from"./screens-DipAHieA.js";import{o as n}from"./index-DOJ5eXTG.js";var r=e(),i=function(){let{clientId:e}=n.useParams();return(0,r.jsx)(t,{clientId:e})};export{i as component};

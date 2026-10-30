@@ -1,4 +1,5 @@
 import { type FormEvent, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Calendar,
   CheckCircle,
@@ -14,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { useLookups } from "@/lib/cc/lookups";
+import { REQUEST_LABEL } from "@/lib/cc/privacy";
+import { PrivacyNotice } from "@/features/cc/privacy-notice";
 import { weekDays } from "@/lib/cc/seed";
 import { useSession } from "@/lib/cc/session";
 import type { RequestKind, Shift } from "@/lib/cc/types";
@@ -64,9 +67,15 @@ function rangeFromWindow(window: string) {
 }
 
 function hoursFromWindow(window: string) {
-  const [a, b] = window.split(/[–-]/).map((n) => Number(n));
-  if (!a || !b) return 0;
-  return b - a;
+  const [a, b] = window.split(/[–-]/);
+  const hour = (x: string) => {
+    const m = x?.match(/(\d{1,2})/);
+    return m ? Number(m[1]) : NaN;
+  };
+  const start = hour(a ?? "");
+  const end = hour(b ?? "");
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return end > start ? end - start : end + 24 - start;
 }
 
 function visitStatus(status: Shift["status"]) {
@@ -155,7 +164,7 @@ export function ClientPortalScreen() {
                 ? `You have ${upcoming.length} upcoming visit${upcoming.length > 1 ? "s" : ""} scheduled.`
                 : "Welcome to your care portal."}
             </p>
-            {me.ndis ? <p className="relative mt-2 text-xs text-portal-fg/70">NDIS: {me.ndis}</p> : null}
+            {me.ndis ? <p className="relative mt-2 text-xs text-portal-fg/70">NDIS {me.ndis} · used for your plan only, not as your login</p> : null}
           </div>
 
           <div className="grid grid-cols-3 gap-3">
@@ -188,10 +197,40 @@ export function ClientPortalScreen() {
           ) : null}
 
           <section className="rounded-xl border border-border/60 bg-surface p-5 shadow-(--shadow-card)">
+            <h3 className="mb-2 text-sm font-bold">Your information</h3>
+            <PrivacyNotice variant="portal" />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-border px-3 py-2 text-sm font-semibold"
+                onClick={() => {
+                  setKind("correction");
+                  setTitle("Please correct my information");
+                  setShowNew(true);
+                  setTab("requests");
+                }}
+              >
+                Ask for a correction
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-border px-3 py-2 text-sm font-semibold"
+                onClick={() => {
+                  setKind("privacy");
+                  setTitle("Privacy question");
+                  setShowNew(true);
+                  setTab("requests");
+                }}
+              >
+                Privacy question
+              </button>
+            </div>
+          </section>
+          <section className="rounded-xl border border-border/60 bg-surface p-5 shadow-(--shadow-card)">
             <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
-              <Heart size={16} className="text-bad" /> Need Help?
+              <Heart size={16} className="text-bad" /> Need help?
             </h3>
-            <p className="mb-4 text-sm text-muted">Contact your Carters Care coordinator for support.</p>
+            <p className="mb-4 text-sm text-muted">Contact your coordinator. For a privacy question, use the buttons above.</p>
             <a
               href="tel:18002278377"
               className="flex items-center gap-3 rounded-lg border border-portal/20 bg-portal-soft p-3 text-portal"
@@ -290,9 +329,11 @@ export function ClientPortalScreen() {
                   onChange={(e) => setKind(e.target.value as RequestKind)}
                   className="h-10 w-full rounded-md border border-border bg-bg px-3 text-sm"
                 >
-                  <option value="schedule">Schedule Change</option>
-                  <option value="service">Service Request</option>
+                  <option value="schedule">Schedule change</option>
+                  <option value="service">Service request</option>
                   <option value="feedback">Feedback</option>
+                  <option value="correction">Correct my information</option>
+                  <option value="privacy">Privacy question or complaint</option>
                   <option value="other">Other</option>
                 </select>
               </label>
@@ -331,7 +372,7 @@ export function ClientPortalScreen() {
               {reqs.map((r) => {
                 const tone = requestTone(r.status);
                 return (
-                  <article key={r.id} className="rounded-lg border border-border/60 bg-surface p-4 shadow-(--shadow-card)">
+                  <Link key={r.id} to={`/requests/${r.id}` as never} className="block rounded-lg border border-border/60 bg-surface p-4 shadow-(--shadow-card)">
                     <div className="mb-2 flex items-start justify-between gap-3">
                       <p className="text-sm leading-tight font-semibold">{r.title}</p>
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap ${tone.cls}`}>
@@ -340,10 +381,11 @@ export function ClientPortalScreen() {
                       </span>
                     </div>
                     <p className="text-sm leading-relaxed text-muted">{r.notes}</p>
+                    {r.reply ? <p className="mt-2 text-sm">Team: {r.reply}</p> : null}
                     <div className="mt-3 flex items-center gap-3 border-t border-border/60 pt-3 text-xs text-subtle">
-                      <span className="rounded-full bg-bg px-2 py-0.5 capitalize">{r.type}</span>
+                      <span className="rounded-full bg-bg px-2 py-0.5">{REQUEST_LABEL[r.type]}</span>
                     </div>
-                  </article>
+                  </Link>
                 );
               })}
             </div>
@@ -352,9 +394,9 @@ export function ClientPortalScreen() {
       ) : null}
 
       <footer className="mt-8 border-t border-portal/15 pt-6 text-center">
-        <img src="/brand/mark.svg?v=3" alt="" className="mx-auto mb-2 size-8 opacity-70" />
-        <p className="text-xs text-subtle">CartersCare client portal · Secure access</p>
-        <p className="mt-1 text-xs text-subtle">Need help? Call us or contact your care coordinator.</p>
+        <img src="/brand/mark.svg?v=4" alt="" className="mx-auto mb-2 size-8 opacity-70" />
+        <p className="text-xs text-subtle">CartersCare client portal</p>
+        <p className="mt-1 text-xs text-subtle">Demo only · the record stays in this browser. Don’t enter real personal information.</p>
       </footer>
     </div>
   );

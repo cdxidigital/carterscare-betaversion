@@ -33,7 +33,7 @@ function stamp(offsetDays: number) {
 
 const today = perthWall(0);
 const mondayOffset = today.getDay() === 0 ? -6 : 1 - today.getDay();
-const week = Array.from({ length: 6 }, (_, i) => stamp(mondayOffset + i));
+const week = Array.from({ length: 7 }, (_, i) => stamp(mondayOffset + i));
 const todayIndex = Math.max(0, week.findIndex((d) => d.date === today.getDate() && d.month === MONTHS[today.getMonth()]));
 
 function shiftStatus(dayIndex: number, live = false): "complete" | "in_progress" | "scheduled" {
@@ -43,8 +43,8 @@ function shiftStatus(dayIndex: number, live = false): "complete" | "in_progress"
 }
 
 const liveDay = todayIndex;
-const nextDay = todayIndex >= 5 ? 4 : todayIndex + 1;
-const earlierDay = [0, 1, 2, 3, 4, 5].find((i) => i !== liveDay && i !== nextDay) ?? 0;
+const nextDay = todayIndex + 1 < week.length ? todayIndex + 1 : 0;
+const earlierDay = [0, 1, 2, 3, 4, 5, 6].find((i) => i !== liveDay && i !== nextDay) ?? 0;
 
 export const weekDays = week.map((d) => d.label);
 export const todayLabel = week[todayIndex]?.label ?? week[0].label;
@@ -65,19 +65,19 @@ export const seed: DB = {
     region: "Perth metro · Australia/Perth",
   },
   staff: [
-    { id: "s1", name: "Emma Johnson", email: "demo@worker.carterscare.com", phone: "0412 889 102", title: "Support Worker", role: "support_worker", status: "active", wwcc: "ok", firstAid: "expiring", wwccExpiry: "12 Apr 2027", firstAidExpiry: stamp(21).long, employment: "casual" },
-    { id: "s2", name: "Jamal Okonkwo", email: "jamal@carterscare.com", phone: "0433 210 554", title: "Support Worker", role: "support_worker", status: "active", wwcc: "ok", firstAid: "ok", wwccExpiry: "3 Jan 2028", firstAidExpiry: "11 Mar 2027", employment: "part-time" },
-    { id: "s3", name: "Priya Nair", email: "priya@carterscare.com", phone: "0408 771 390", title: "Team Leader", role: "team_leader", status: "active", wwcc: "ok", firstAid: "ok", wwccExpiry: "19 Aug 2027", firstAidExpiry: "2 Feb 2027", employment: "full-time" },
-    { id: "s4", name: "Tom Walsh", email: "tom@carterscare.com", phone: "0421 009 884", title: "Support Worker", role: "support_worker", status: "leave", wwcc: "ok", firstAid: "expired", wwccExpiry: "8 Nov 2026", firstAidExpiry: "1 Jun 2026", employment: "casual" },
-    { id: "s5", name: "David Chen", email: "demo@manager.carterscare.com", phone: "0417 665 221", title: "Operations Manager", role: "manager", status: "active", wwcc: "ok", firstAid: "ok", wwccExpiry: "4 May 2028", firstAidExpiry: "18 Jul 2027", employment: "full-time" },
-    { id: "s6", name: "Sarah Mitchell", email: "demo@admin.carterscare.com", phone: "0400 112 338", title: "Director", role: "admin", status: "active", wwcc: "ok", firstAid: "ok", wwccExpiry: "22 Dec 2028", firstAidExpiry: "9 Oct 2027", employment: "full-time" },
+    { id: "s1", name: "Emma Johnson", email: "demo@worker.carterscare.com", phone: "0412 889 102", title: "Support Worker", role: "support_worker", status: "active", wwcc: "ok", firstAid: "expiring", ndisScreening: "ok", wwccExpiry: "12 Apr 2027", firstAidExpiry: stamp(21).long, ndisScreeningExpiry: "12 Apr 2027", employment: "casual" },
+    { id: "s2", name: "Jamal Okonkwo", email: "jamal@carterscare.com", phone: "0433 210 554", title: "Support Worker", role: "support_worker", status: "active", wwcc: "ok", firstAid: "ok", ndisScreening: "ok", wwccExpiry: "3 Jan 2028", firstAidExpiry: "11 Mar 2027", ndisScreeningExpiry: "3 Jan 2028", employment: "part-time" },
+    { id: "s3", name: "Priya Nair", email: "priya@carterscare.com", phone: "0408 771 390", title: "Team Leader", role: "team_leader", status: "active", wwcc: "ok", firstAid: "ok", ndisScreening: "ok", wwccExpiry: "19 Aug 2027", firstAidExpiry: "2 Feb 2027", ndisScreeningExpiry: "19 Aug 2027", employment: "full-time" },
+    { id: "s4", name: "Tom Walsh", email: "tom@carterscare.com", phone: "0421 009 884", title: "Support Worker", role: "support_worker", status: "leave", wwcc: "expiring", firstAid: "expired", ndisScreening: "ok", wwccExpiry: "8 Nov 2026", firstAidExpiry: "1 Jun 2026", ndisScreeningExpiry: "8 Nov 2027", employment: "casual" },
+    { id: "s5", name: "David Chen", email: "demo@manager.carterscare.com", phone: "0417 665 221", title: "Operations Manager", role: "manager", status: "active", wwcc: "ok", firstAid: "ok", ndisScreening: "ok", wwccExpiry: "4 May 2028", firstAidExpiry: "18 Jul 2027", ndisScreeningExpiry: "4 May 2028", employment: "full-time" },
+    { id: "s6", name: "Sarah Mitchell", email: "demo@admin.carterscare.com", phone: "0400 112 338", title: "Director", role: "admin", status: "active", wwcc: "ok", firstAid: "ok", ndisScreening: "ok", wwccExpiry: "22 Dec 2028", firstAidExpiry: "9 Oct 2027", ndisScreeningExpiry: "22 Dec 2028", employment: "full-time" },
   ],
   clients: [
-    { id: "c1", name: "Robert Thompson", preferredName: "Bob", suburb: "Perth", ndis: "431 234 567", plan: "SIL + Community", hours: 28, risk: "medium", status: "active", coordinator: "Priya Nair", goals: "Independent grocery shop and community swimming.", staffIds: ["s1", "s3"] },
-    { id: "c2", name: "Eliza Hart", suburb: "Fremantle", ndis: "431 008 441", plan: "Community Access", hours: 16, risk: "low", status: "active", coordinator: "Priya Nair", goals: "Weekly swimming program and cafe social.", staffIds: ["s3", "s2"] },
-    { id: "c3", name: "Marcus Bell", suburb: "Joondalup", ndis: "429 774 102", plan: "Personal Care", hours: 22, risk: "high", status: "active", coordinator: "David Chen", goals: "Safe transfers and reduced anxiety at home.", staffIds: ["s2", "s3"] },
-    { id: "c4", name: "Aisha Rahman", suburb: "Canning Vale", ndis: "432 551 009", plan: "Capacity Building", hours: 12, risk: "low", status: "active", coordinator: "Emma Johnson", goals: "Budgeting and public transport practice.", staffIds: ["s1"] },
-    { id: "c5", name: "Owen Fraser", suburb: "Midland", ndis: "428 330 776", plan: "SIL", hours: 38, risk: "medium", status: "onboarding", coordinator: "David Chen", goals: "Settle into SIL and complete intake.", staffIds: ["s5"] },
+    { id: "c1", name: "Robert Thompson", preferredName: "Bob", suburb: "Perth", ndis: "431 234 567", plan: "SIL + Community", hours: 28, risk: "medium", status: "active", coordinator: "Priya Nair", goals: "Independent grocery shop and community swimming.", staffIds: ["s1", "s3"], privacyConsent: true, consentAt: "1 Jul 2026" },
+    { id: "c2", name: "Eliza Hart", suburb: "Fremantle", ndis: "431 008 441", plan: "Community Access", hours: 16, risk: "low", status: "active", coordinator: "Priya Nair", goals: "Weekly swimming program and cafe social.", staffIds: ["s3", "s2"], privacyConsent: true, consentAt: "14 Mar 2026" },
+    { id: "c3", name: "Marcus Bell", suburb: "Joondalup", ndis: "429 774 102", plan: "Personal Care", hours: 22, risk: "high", status: "active", coordinator: "David Chen", goals: "Safe transfers and reduced anxiety at home.", staffIds: ["s2", "s3"], privacyConsent: true, consentAt: "2 May 2026" },
+    { id: "c4", name: "Aisha Rahman", suburb: "Canning Vale", ndis: "432 551 009", plan: "Capacity Building", hours: 12, risk: "low", status: "active", coordinator: "Emma Johnson", goals: "Budgeting and public transport practice.", staffIds: ["s1"], privacyConsent: true, consentAt: "20 Aug 2026" },
+    { id: "c5", name: "Owen Fraser", suburb: "Midland", ndis: "428 330 776", plan: "SIL", hours: 38, risk: "medium", status: "onboarding", coordinator: "David Chen", goals: "Settle into SIL and complete intake.", staffIds: ["s5"], privacyConsent: false },
   ],
   notes: [
     { id: "n1", clientId: "c1", staffId: "s1", date: stamp(-2).long, shift: "07:00–15:00", kind: "daily care", visibleToClient: true, body: "Good day — Robert engaged well. Completed grocery shop independently with verbal prompts. Mood settled after lunch. PRN not required." },
@@ -86,8 +86,9 @@ export const seed: DB = {
     { id: "n4", clientId: "c1", staffId: "s2", date: stamp(-4).long, shift: "09:00–13:00", kind: "progress", visibleToClient: true, body: "Mobility improving — walked around the garden independently. Proud of the extra lap." },
   ],
   incidents: [
-    { id: "i1", clientId: "c3", staffId: "s2", severity: "moderate", status: "investigating", when: `${stamp(-2).long} 16:40`, summary: "Slip in bathroom. No injury. Environment reviewed.", followUp: "Non-slip mat ordered. Review this week." },
-    { id: "i2", clientId: "c1", staffId: "s1", severity: "low", status: "closed", when: `${stamp(-8).long} 11:15`, summary: "Missed medication window by 20 min. Double-check protocol followed.", followUp: "Closed after medication audit." },
+    { id: "i1", clientId: "c3", staffId: "s2", severity: "moderate", status: "investigating", reportable: false, when: `${stamp(-2).long} 16:40`, summary: "Slip in bathroom. No injury. Environment reviewed.", followUp: "Non-slip mat ordered. Review this week." },
+    { id: "i2", clientId: "c1", staffId: "s1", severity: "low", status: "closed", reportable: false, when: `${stamp(-8).long} 11:15`, summary: "Missed medication window by 20 min. Double-check protocol followed.", followUp: "Closed after medication audit." },
+    { id: "i3", clientId: "c3", staffId: "s2", severity: "high", status: "open", reportable: true, when: `${stamp(0).long} 07:20`, summary: "Door locked during an anxiety episode. No injury. Recorded as an unauthorised restrictive practice.", followUp: "Notify the NDIS Commission within 24 hours. Behaviour support to review the plan." },
   ],
   timesheets: [
     { id: "t1", staffId: "s1", clientId: "c1", date: stamp(-2).short, start: "07:00", end: "15:00", hours: 8, status: "submitted" },
@@ -129,15 +130,17 @@ export const seed: DB = {
   ],
   onboarding: [
     { id: "ob1", subjectType: "client", subjectId: "c5", name: "Service agreement signed", status: "pending" },
-    { id: "ob2", subjectType: "client", subjectId: "c5", name: "Risk assessment complete", status: "pending" },
-    { id: "ob3", subjectType: "client", subjectId: "c5", name: "SIL environment check", status: "done" },
-    { id: "ob4", subjectType: "staff", subjectId: "s4", name: "Return-to-work plan", status: "pending" },
+    { id: "ob2", subjectType: "client", subjectId: "c5", name: "Privacy consent recorded", status: "pending" },
+    { id: "ob3", subjectType: "client", subjectId: "c5", name: "Risk assessment complete", status: "pending" },
+    { id: "ob4", subjectType: "client", subjectId: "c5", name: "SIL environment check", status: "done" },
+    { id: "ob5", subjectType: "staff", subjectId: "s4", name: "Return-to-work plan", status: "pending" },
   ],
   checkins: [
     { id: "ck1", staffId: "s2", clientId: "c3", inAt: "08:05" },
   ],
   requests: [
     { id: "rq1", clientId: "c1", title: "Change visit time", status: "pending", type: "schedule", notes: "Please change Friday visit from 9am to 10am. Family lunch on Friday." },
-    { id: "rq2", clientId: "c2", title: "New pool towel", status: "resolved", type: "service", notes: "Towel at South Beach program is worn. Replacement approved." },
+    { id: "rq2", clientId: "c2", title: "New pool towel", status: "resolved", type: "service", notes: "Towel at South Beach program is worn. Replacement approved.", reply: "Replacement towel is with the South Beach program." },
+    { id: "rq3", clientId: "c1", title: "Preferred name is Bob", status: "pending", type: "correction", notes: "Please keep my preferred name as Bob on the portal and the roster." },
   ],
 };
